@@ -1,48 +1,72 @@
+//! A collection of fast drawing routines aimed at interactive applications and games.
+//!
+//! # Features
+//! - Optimized for dynamically generated content.
+//! - Local-antialiasing using blended strips.
+//! - GPU rendering: output to streamed vertex/index buffers.
+//! - Various primitives are batched together: single draw-call per frame is a common scenario.
+//! - Agnostic of backends and vertex formats. Has `miniquad` <!-- and wgpu --> backend out-of the box. Easy to integrate with a custom engine.
+//! - Can be used with 16-bit indices (to reduce memory bandwidth) and update multiple buffers when reaching 65K vertex/index limits.
+//! - Easy to extend with custom traits.
+//! - WebAssembly support.
+//! - Pure rust, no unsafe code.
+//!
+//! Individual drawing operations such as [`GeometryBuilder::add_circle`] or [`GeometryBuilder::add_polyline`] are available in [`GeometryBuilder`] impl.
 pub mod example;
 use glam::vec2;
 use glam::Vec2;
-use core::clone::Clone;
 use core::default::Default;
 use core::marker::Copy;
+use core::iter::Iterator;
 
 type IndexType = u16;
 
-
-pub trait VertexColor {
-    fn set_color(&mut self, color: [u8; 4]);
-    fn set_alpha(&mut self, alpha: u8);
-    fn alpha(&self) -> u8;
-}
-
-pub trait VertexPos2 {
-    fn set_pos(&mut self, pos: [f32; 2]);
-}
-
-pub trait VertexPos3 {
-    fn set_pos3(&mut self, pos: [f32; 3]);
-}
-
-pub trait VertexUV {
-    fn set_uv(&mut self, uv: [f32; 2]);
-}
-
-pub enum GeometryCommand {
-    // start new index buffer
-    Indices { num_indices: usize },
-    // start new vertex buffer
-    Vertices { num_vertices: usize },
-    // draw range
-    Draw { num_indices: usize },
-}
-
-pub struct Geometry<Vertex: Clone> {
+/// Performs actual rendering.
+///
+/// `add_`-methods are used to add individual primitives.
+/// [`GeometryBuilder::finish_commands`] is used to finalize buffers and backend-specific
+/// call is used for the actual rendering.
+///
+/// # Example
+///
+/// ```
+/// // initialization stage
+/// let geometry = GeometryBuilder::new(1024, 1024);
+///
+/// // frame:
+/// geometry.clear();
+/// // add vertices/indices to be rendered
+/// geometry.add_circle::<true>(vec2(512.0, 512.0), 128.0, 64);
+/// geometry.add_polyline::<true>(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
+///                               [255, 0, 0, 255], true, 2.0);
+/// geometry.finish_commands();
+///
+/// // render using particular backend
+/// realtime_drawing_miniquad::render_geometry(geometry, buffer_pool)
+/// ```
+/// # Internals
+/// Drawn primitives are accumulated in fields: [`vertices`](`GeometryBuilder::vertices`),
+/// [`indices`](`GeometryBuilder::indices`), and [`commands`](`GeometryBuilder::commands`).
+/// In such a way that they can be efficiently transferred and rendered through a pool of
+/// fixed-size buffers.
+///
+/// Backend-specfic render_geometry-calls are used for actual rendering.
+///
+pub struct GeometryBuilder<Vertex: Copy> {
+    /// batched vertices
     pub vertices: Vec<Vertex>,
+    /// batched indices
     pub indices: Vec<IndexType>,
+    /// list of drawing commands
     pub commands: Vec<GeometryCommand>,
 
     // setup
+    /// Maximum number of vertices per vertex buffer.
     pub max_buffer_vertices: usize,
+    /// Maximum number of indices per index buffer.
     pub max_buffer_indices: usize,
+
+    /// Size of pixel in position units. It is used for blended strips of antialiased geometry.
     pub pixel_size: f32,
 
     // active command
@@ -53,7 +77,7 @@ pub struct Geometry<Vertex: Clone> {
     buffer_indices_end: usize,
 }
 
-impl<Vertex: Copy> Geometry<Vertex> {
+impl<Vertex: Copy> GeometryBuilder<Vertex> {
     pub fn new(max_buffer_vertices: usize, max_buffer_indices: usize) -> Self {
         assert!(max_buffer_vertices <= IndexType::MAX as usize + 1);
         let mut commands = Vec::new();
@@ -76,6 +100,10 @@ impl<Vertex: Copy> Geometry<Vertex> {
         }
     }
 
+    /// Base method for implementing primitives.
+    /// Allocates a slice of vertices and indices.
+    /// Returns (vertices_slice, indices_slice, base_index) where
+    /// base_index is an index of first vertex in the buffer.    ///
     #[inline(always)]
     pub fn allocate(
         &mut self,
@@ -92,7 +120,7 @@ impl<Vertex: Copy> Geometry<Vertex> {
         let vertices_overflow = new_vertices > self.buffer_vertices_end;
         let split_draw = indices_overflow || vertices_overflow;
         if split_draw {
-            self.commands.push(GeometryCommand::Draw {
+            self.commands.push(GeometryCommand::DrawCall {
                 num_indices: old_indices - self.draw_indices,
             });
             self.draw_indices = old_indices;
@@ -125,6 +153,30 @@ impl<Vertex: Copy> Geometry<Vertex> {
         )
     }
 
+    /// Returns previously allocated vertex/indices.
+    /// Used when exact knowledge of allocation requires second pass but
+    /// conservative estimation is available.
+    pub fn reclaim_allocation(&mut self, num_vertices: usize, num_indices: usize) {
+        self.vertices.truncate(self.vertices.len() - num_vertices);
+        self.indices.truncate(self.indices.len() - num_indices);
+    }
+
+    /// Clears vertex, index buffers and command list.
+    pub fn clear(&mut self) {
+        self.indices.clear();
+        self.vertices.clear();
+        self.commands.clear();
+        self.last_indices_command = self.commands.len();
+        self.commands.push(GeometryCommand::Indices { num_indices: 0 });
+        self.last_vertices_command = self.commands.len();
+        self.commands.push(GeometryCommand::Vertices { num_vertices: 0 });
+        self.draw_indices = 0;
+        self.buffer_indices_end = self.max_buffer_indices;
+        self.buffer_vertices_end = self.max_buffer_vertices;
+    }
+
+    /// Finalizes command list. This function is expected to be called before
+    /// transmitting geometry data into vertex/index buffers.
     pub fn finish_commands(&mut self) {
         let num_vertices = self.vertices.len();
         let num_indices = self.indices.len();
@@ -139,35 +191,18 @@ impl<Vertex: Copy> Geometry<Vertex> {
             };
         }
         if self.draw_indices != num_indices {
-            self.commands.push(GeometryCommand::Draw {
+            self.commands.push(GeometryCommand::DrawCall {
                 num_indices: num_indices - self.draw_indices,
             });
             self.draw_indices = num_indices;
         }
     }
 
-    pub fn reclaim(&mut self, num_vertices: usize, num_indices: usize) {
-        self.vertices.truncate(self.vertices.len() - num_vertices);
-        self.indices.truncate(self.indices.len() - num_indices);
-    }
-
-    pub fn clear(&mut self) {
-        self.indices.clear();
-        self.vertices.clear();
-        self.commands.clear();
-        self.last_indices_command = self.commands.len();
-        self.commands.push(GeometryCommand::Indices { num_indices: 0 });
-        self.last_vertices_command = self.commands.len();
-        self.commands.push(GeometryCommand::Vertices { num_vertices: 0 });
-        self.draw_indices = 0;
-        self.buffer_indices_end = self.max_buffer_indices;
-        self.buffer_vertices_end = self.max_buffer_vertices;
-    }
 }
 
-impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
+impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> {
     #[inline]
-    pub fn add_circle_aa(&mut self, pos: Vec2, radius: f32, num_segments: usize, def: Vertex) {
+    pub fn add_circle<const ANTIALIAS: bool>(&mut self, center: Vec2, radius: f32, num_segments: usize, def: Vertex) {
         let pixel = self.pixel_size;
         let half_pixel = pixel * 0.5;
         let alpha = def.alpha() as f32;
@@ -177,12 +212,12 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
             let cos = angle.cos();
             let sin = angle.sin();
             for (v, p) in pair.iter_mut().zip(&[0.0, pixel]) {
-                let pos = pos + vec2(cos, sin) * (radius - half_pixel + p);
+                let pos = center + vec2(cos, sin) * (radius - half_pixel + p);
                 v.set_pos(pos.into());
                 v.set_alpha(((1.0 - p) * alpha) as u8);
             }
         }
-        vs.last_mut().unwrap().set_pos([pos[0], pos[1]]);
+        vs.last_mut().unwrap().set_pos([center[0], center[1]]);
         let central_vertex = num_segments * 2;
 
         for (section_i, section) in is.chunks_mut(9).enumerate() {
@@ -205,7 +240,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
     }
 
     #[inline]
-    pub fn add_circle_outline_aa(&mut self, pos: Vec2, radius: f32, thickness: f32, num_segments: usize, def: Vertex) {
+    pub fn add_circle_outline<const ANTIALIAS: bool>(&mut self, center: Vec2, radius: f32, thickness: f32, num_segments: usize, def: Vertex) {
         let pixel_size = self.pixel_size;
         if thickness > pixel_size {
             let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 18, def);
@@ -219,8 +254,8 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                     .zip(&[(-ht - pixel_size, 0), (-ht, 255), (ht, 255), (ht + pixel_size, 0)])
                 {
                     v.set_pos([
-                        (pos[0] + cos * (radius + p.0)).into(),
-                        (pos[1] + sin * (radius + p.0)).into(),
+                        (center[0] + cos * (radius + p.0)).into(),
+                        (center[1] + sin * (radius + p.0)).into(),
                     ]);
                     v.set_alpha(p.1);
                 }
@@ -262,7 +297,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                     pair.iter_mut()
                         .zip(&[(-pixel_size, 0), (0.0, (255.0 * thickness) as u8), (pixel_size, 0)])
                 {
-                    v.set_pos([pos[0] + cos * (radius + p.0), pos[1] + sin * (radius + p.0)]);
+                    v.set_pos([center[0] + cos * (radius + p.0), center[1] + sin * (radius + p.0)]);
                     v.set_alpha(p.1);
                 }
             }
@@ -289,10 +324,9 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
         }
     }
 
-    // Assumes coordinates to be pixels
-    // based on AddPoyline from Dear ImGui by Omar Cornut (MIT)
-    //     // Assumes coordinates to be pixels
-    pub fn add_polyline_aa(&mut self, points: &[Vec2], color: [u8; 4], closed: bool, thickness: f32) {
+    // Coordinates are assumed to be pixel.
+    pub fn add_polyline<const ANTIALIAS: bool>(&mut self, points: &[Vec2], color: [u8; 4], closed: bool, thickness: f32) {
+        // based on AddPoyline from Dear ImGui by Omar Cornut (MIT)
         if points.len() < 2 {
             return;
         }
@@ -473,7 +507,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
         }
     }
 
-    pub fn add_polyline_miter(&mut self, points: &[Vec2], color: [u8; 4], closed: bool, thickness: f32) {
+    pub fn add_polyline_miter<const ANTIALIAS: bool>(&mut self, points: &[Vec2], color: [u8; 4], closed: bool, thickness: f32) {
         let points_count = points.len();
         if points_count < 2 {
             return;
@@ -481,14 +515,13 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
 
         let count = if closed { points_count } else { points_count - 1 }; // segment count
 
-        let antialias = true;
         let pixel_size = self.pixel_size;
         let col_trans = [color[0], color[1], color[2], 0];
 
         let mut v = Vertex::default();
         v.set_color(color);
 
-        if antialias && thickness <= pixel_size {
+        if ANTIALIAS && thickness <= pixel_size {
             // Anti-aliased stroke approximation
             let idx_count = count * 12;
             let vtx_count = count * 6;
@@ -541,13 +574,13 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
             }
         } else {
             // Precise line with bevels on acute angles
-            let max_n_vtx = if antialias { 6 } else { 3 };
-            let max_n_idx = 3 * if antialias { 9 } else { 3 };
+            let max_n_vtx = if ANTIALIAS { 6 } else { 3 };
+            let max_n_idx = 3 * if ANTIALIAS { 9 } else { 3 };
             let vtx_count = points_count * max_n_vtx;
             let idx_count = count * max_n_idx;
             let (mut vs, mut is, first) = self.allocate(vtx_count, idx_count, v);
 
-            let half_thickness = if antialias { thickness - pixel_size } else { thickness } * 0.5;
+            let half_thickness = if ANTIALIAS { thickness - pixel_size } else { thickness } * 0.5;
             let half_thickness_aa = half_thickness + pixel_size;
             let first_vtx_ptr = first;
             let mut unused_vertices = 0;
@@ -616,7 +649,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                             p1.x + (dx1 + dx2) * miter_l,
                             p1.y + (dy1 + dy2) * miter_l,
                         ),
-                        if antialias {
+                        if ANTIALIAS {
                             let miter_al = half_thickness_aa / miter_l_recip;
                             (
                                 p1.x - (dx1 + dx2) * miter_al,
@@ -637,7 +670,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                             p1.x - dy1 * half_thickness,
                             p1.y + dx1 * half_thickness,
                         ),
-                        if antialias {
+                        if ANTIALIAS {
                             (
                                 p1.x + dy1 * half_thickness_aa,
                                 p1.y - dx1 * half_thickness_aa,
@@ -663,7 +696,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
                 };
-                let (b1ax, b1ay, b2ax, b2ay) = if bevel && antialias {
+                let (b1ax, b1ay, b2ax, b2ay) = if bevel && ANTIALIAS {
                     (
                         p1.x + (dx1 - dy1 * miter_sign) * half_thickness_aa,
                         p1.y + (dy1 + dx1 * miter_sign) * half_thickness_aa,
@@ -692,7 +725,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                 // Having all the vertices of the incoming edge in predictable positions is important - we reference them
                 // even if we don't know relevant line properties yet
 
-                let vertex_count = if antialias {
+                let vertex_count = if ANTIALIAS {
                     if bevel {
                         6
                     } else {
@@ -705,7 +738,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                         2
                     }
                 };
-                let bi = if antialias { 4 } else { 2 }; // Outgoing edge bevel vertex index
+                let bi = if ANTIALIAS { 4 } else { 2 }; // Outgoing edge bevel vertex index
                 let bevel_l = bevel && miter_sign < 0.0;
                 let bevel_r = bevel && miter_sign > 0.0;
 
@@ -716,7 +749,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                     vs[bi].set_pos([b2x, b2y]);
                 }
 
-                if antialias {
+                if ANTIALIAS {
                     vs[2].set_pos([if bevel_l { b1ax } else { mlax }, if bevel_l { b1ay } else { mlay }]);
                     vs[2].set_color(col_trans);
                     vs[3].set_pos([if bevel_r { b1ax } else { mrax }, if bevel_r { b1ay } else { mray }]);
@@ -759,7 +792,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                         unused_indices += 3;
                     }
 
-                    if antialias {
+                    if ANTIALIAS {
                         let l1ai = vi + if bevel_l { 5 } else { 2 };
                         let r1ai = vi + if bevel_r { 5 } else { 3 };
                         let l2ai = vtx_next_id + 2;
@@ -795,11 +828,11 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
                 }
                 vi += vertex_count;
             }
-            self.reclaim(unused_vertices, unused_indices);
+            self.reclaim_allocation(unused_vertices, unused_indices);
         }
     }
 
-    pub fn add_polyline_variable_aa(&mut self, points: &[Vec2], radius: &[f32], def: Vertex) {
+    pub fn add_polyline_variable<const ANTIALIAS: bool>(&mut self, points: &[Vec2], radius: &[f32], def: Vertex) {
         if points.len() < 2 {
             return;
         }
@@ -905,16 +938,16 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
         }
     }
 
-    pub fn add_capsule_chain(&mut self, points: &[Vec2], radius: &[f32], def: Vertex) {
+    pub fn add_capsule_chain<const ANTIALIAS: bool>(&mut self, points: &[Vec2], radius: &[f32], def: Vertex) {
         // TODO: optimal non-overlapping implementation
-        self.add_polyline_variable_aa(points, radius, def.clone());
+        self.add_polyline_variable::<ANTIALIAS>(points, radius, def.clone());
         for (&point, &r) in points.iter().zip(radius.iter()) {
-            self.add_circle_aa(point, r, r.ceil() as usize * 3, def.clone());
+            self.add_circle::<ANTIALIAS>(point, r, r.ceil() as usize * 3, def.clone());
         }
     }
 }
 
-impl<Vertex: Copy + VertexPos2> Geometry<Vertex> {
+impl<Vertex: Copy + VertexPos2> GeometryBuilder<Vertex> {
     pub fn add_position_indices(&mut self, positions: &[[f32; 2]], indices: &[IndexType], def: Vertex) {
         let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
         for (dest, pos) in vs.iter_mut().zip(positions) {
@@ -994,7 +1027,7 @@ impl<Vertex: Copy + VertexPos2> Geometry<Vertex> {
     }
 }
 
-impl<Vertex: Copy + VertexPos3> Geometry<Vertex> {
+impl<Vertex: Copy + VertexPos3> GeometryBuilder<Vertex> {
     pub fn add_box(&mut self, center: [f32; 3], size: [f32; 3], def: Vertex) {
         let (vs, is, first) = self.allocate(8, 36, def);
         for (v, i) in vs.iter_mut().zip(0..8) {
@@ -1029,7 +1062,7 @@ impl<Vertex: Copy + VertexPos3> Geometry<Vertex> {
     }
 }
 
-impl<Vertex: Copy + VertexPos2 + VertexUV> Geometry<Vertex> {
+impl<Vertex: Copy + VertexPos2 + VertexUV> GeometryBuilder<Vertex> {
     pub fn add_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], def: Vertex) -> &mut [Vertex] {
         let (vs, is, first) = self.allocate(4, 6, def);
 
@@ -1092,4 +1125,42 @@ impl<Vertex: Copy + VertexPos2 + VertexUV> Geometry<Vertex> {
             }
         }
     }
+}
+
+
+
+/// A trait to be implemented for your vertex format in to use colored or
+/// alpha-blended primitives.
+pub trait VertexColor {
+    fn set_color(&mut self, color: [u8; 4]);
+    fn set_alpha(&mut self, alpha: u8);
+    fn alpha(&self) -> u8;
+}
+
+/// A trait that needs to be implemented for your vertex format in order
+/// to use 2D-primitives.
+pub trait VertexPos2 {
+    fn set_pos(&mut self, pos: [f32; 2]);
+}
+
+/// A trait that needs to be implemented for your vertex format in order
+/// to use 3D-primitives.
+pub trait VertexPos3 {
+    fn set_pos3(&mut self, pos: [f32; 3]);
+}
+
+/// A trait to be implemented for your vertex format in order
+/// to use primitives with UV coordinates.
+pub trait VertexUV {
+    fn set_uv(&mut self, uv: [f32; 2]);
+}
+
+/// Individual command in a drawing list.
+pub enum GeometryCommand {
+    /// Starts a new index buffer
+    Indices { num_indices: usize },
+    /// Start new vertex buffer
+    Vertices { num_vertices: usize },
+    /// Performs actual draw call
+    DrawCall { num_indices: usize },
 }
