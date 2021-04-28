@@ -1,4 +1,5 @@
 use realtime_drawing::*;
+use realtime_drawing::example::*;
 use glam::vec2;
 
 fn main() {
