@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 use glam::vec2;
 use glam::Vec2;
+use core::clone::Clone;
+use core::default::Default;
+use core::marker::Copy;
 
 type IndexType = u16;
 
@@ -35,10 +38,6 @@ impl Default for VertexPos3UvColor {
     }
 }
 
-pub trait VertexSize: std::clone::Clone + std::default::Default {
-    fn size_of() -> usize;
-}
-
 pub trait VertexColor {
     fn set_color(&mut self, color: [u8; 4]);
     fn set_alpha(&mut self, alpha: u8);
@@ -57,11 +56,6 @@ pub trait VertexUV {
     fn set_uv(&mut self, uv: [f32; 2]);
 }
 
-impl VertexSize for VertexPos3UvColor {
-    fn size_of() -> usize {
-        std::mem::size_of::<Self>()
-    }
-}
 impl VertexPos2 for VertexPos3UvColor {
     fn set_pos(&mut self, pos: [f32; 2]) {
         self.pos = [pos[0], pos[1], 0.0];
@@ -98,7 +92,7 @@ pub enum GeometryCommand {
     Draw { num_indices: usize },
 }
 
-pub struct Geometry<Vertex: VertexSize = VertexPos3UvColor> {
+pub struct Geometry<Vertex: Clone> {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<IndexType>,
     pub commands: Vec<GeometryCommand>,
@@ -116,7 +110,7 @@ pub struct Geometry<Vertex: VertexSize = VertexPos3UvColor> {
     buffer_indices_end: usize,
 }
 
-impl<Vertex: VertexSize> Geometry<Vertex> {
+impl<Vertex: Copy> Geometry<Vertex> {
     pub fn new(max_buffer_vertices: usize, max_buffer_indices: usize) -> Self {
         assert!(max_buffer_vertices <= IndexType::MAX as usize + 1);
         let mut commands = Vec::new();
@@ -228,7 +222,7 @@ impl<Vertex: VertexSize> Geometry<Vertex> {
     }
 }
 
-impl<Vertex: VertexSize + VertexPos2 + VertexColor> Geometry<Vertex> {
+impl<Vertex: Copy + Default + VertexPos2 + VertexColor> Geometry<Vertex> {
     #[inline]
     pub fn add_circle_aa(&mut self, pos: Vec2, radius: f32, num_segments: usize, def: Vertex) {
         let pixel = self.pixel_size;
@@ -977,7 +971,7 @@ impl<Vertex: VertexSize + VertexPos2 + VertexColor> Geometry<Vertex> {
     }
 }
 
-impl<Vertex: VertexSize + VertexPos2> Geometry<Vertex> {
+impl<Vertex: Copy + VertexPos2> Geometry<Vertex> {
     pub fn add_position_indices(&mut self, positions: &[[f32; 2]], indices: &[IndexType], def: Vertex) {
         let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
         for (dest, pos) in vs.iter_mut().zip(positions) {
@@ -1057,7 +1051,7 @@ impl<Vertex: VertexSize + VertexPos2> Geometry<Vertex> {
     }
 }
 
-impl<Vertex: VertexSize + VertexPos3> Geometry<Vertex> {
+impl<Vertex: Copy + VertexPos3> Geometry<Vertex> {
     pub fn add_box(&mut self, center: [f32; 3], size: [f32; 3], def: Vertex) {
         let (vs, is, first) = self.allocate(8, 36, def);
         for (v, i) in vs.iter_mut().zip(0..8) {
@@ -1092,7 +1086,7 @@ impl<Vertex: VertexSize + VertexPos3> Geometry<Vertex> {
     }
 }
 
-impl<Vertex: VertexSize + VertexPos2 + VertexUV> Geometry<Vertex> {
+impl<Vertex: Copy + VertexPos2 + VertexUV> Geometry<Vertex> {
     pub fn add_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], def: Vertex) -> &mut [Vertex] {
         let (vs, is, first) = self.allocate(4, 6, def);
 
