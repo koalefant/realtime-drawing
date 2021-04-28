@@ -11,7 +11,8 @@
 //! - WebAssembly support.
 //! - Pure rust, no unsafe code.
 //!
-//! Individual drawing operations such as [`GeometryBuilder::add_circle`] or [`GeometryBuilder::add_polyline`] are available in [`GeometryBuilder`] impl.
+//! Individual drawing operations such as [`GeometryBuilder::add_circle`] or
+//! [`GeometryBuilder::add_polyline`] are available in [`GeometryBuilder`] implementation.
 pub mod example;
 use core::default::Default;
 use core::iter::Iterator;
@@ -23,7 +24,7 @@ type IndexType = u16;
 
 /// Performs actual rendering.
 ///
-/// `add_`-methods are used to add individual primitives.
+/// `add_`-methods are used to draw individual primitives.
 /// [`GeometryBuilder::finish_commands`] is used to finalize buffers and backend-specific
 /// call is used for the actual rendering.
 ///
@@ -50,7 +51,7 @@ type IndexType = u16;
 /// In such a way that they can be efficiently transferred and rendered through a pool of
 /// fixed-size buffers.
 ///
-/// Backend-specfic render_geometry-calls are used for actual rendering.
+/// Backend-specfic `render_geometry` calls are used for actual rendering.
 ///
 pub struct GeometryBuilder<Vertex: Copy> {
     /// batched vertices
