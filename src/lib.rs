@@ -4,16 +4,23 @@
 //! - Optimized for dynamically generated content.
 //! - Local-antialiasing using blended strips.
 //! - GPU rendering: output to streamed vertex/index buffers.
-//! - Various primitives are batched together: single draw-call per frame is a common scenario.
-//! - Agnostic of backends and vertex formats. Has `miniquad` <!-- and wgpu --> backend out-of the box. Easy to integrate with a custom engine.
+//! - Aggressive batching across primitive types.
+//! - Backend-agnostic. Comes with [`MiniquadBatch`] that implements [`miniquad`]-backend out of the box. Easy integration into existing engines.
+//! - Works with custom vertex format through traits. See [`VertexPos2`], [`VertexPos3`], [`VertexColor`] etc.
 //! - Can be used with 16-bit indices (to reduce memory bandwidth) and update multiple buffers when reaching 65K vertex/index limits.
 //! - Easy to extend with custom traits.
 //! - WebAssembly support.
 //! - Pure rust, no unsafe code.
 //!
-//! Individual drawing operations such as [`GeometryBuilder::add_circle`] or
-//! [`GeometryBuilder::add_polyline`] are available in [`GeometryBuilder`] implementation.
-pub mod example;
+//! Individual drawing operations such as [`GeometryBatch::add_circle`] or
+//! [`GeometryBatch::add_polyline`] are available in [`GeometryBatch`] implementation.
+//!
+/// [`miniquad`]: https://docs.rs/miniquad/
+mod example;
+mod miniquad_batch;
+pub use miniquad_batch::MiniquadBatch;
+pub use example::VertexPos3UvColor;
+
 use core::default::Default;
 use core::iter::Iterator;
 use core::marker::Copy;
@@ -22,38 +29,34 @@ use glam::Vec2;
 
 type IndexType = u16;
 
-/// Performs actual rendering.
+/// Hosts drawing routines.
 ///
 /// `add_`-methods are used to draw individual primitives.
-/// [`GeometryBuilder::finish_commands`] is used to finalize buffers and backend-specific
+/// [`GeometryBatch::finish_commands`] is used to finalize buffers and backend-specific
 /// call is used for the actual rendering.
 ///
 /// # Example
 ///
 /// ```
 /// // initialization stage
-/// let geometry = GeometryBuilder::new(1024, 1024);
-///
-/// // frame:
+/// let geometry = GeometryBatch::new(1024, 1024);
 /// geometry.clear();
-/// // add vertices/indices to be rendered
 /// geometry.add_circle::<true>(vec2(512.0, 512.0), 128.0, 64);
 /// geometry.add_polyline::<true>(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
 ///                               [255, 0, 0, 255], true, 2.0);
-/// geometry.finish_commands();
 ///
-/// // render using particular backend
-/// realtime_drawing_miniquad::render_geometry(geometry, buffer_pool)
+/// // access geometry.vertices/indices/commands to perform actual rendering
+///
 /// ```
 /// # Internals
-/// Drawn primitives are accumulated in fields: [`vertices`](`GeometryBuilder::vertices`),
-/// [`indices`](`GeometryBuilder::indices`), and [`commands`](`GeometryBuilder::commands`).
+/// Drawn primitives are accumulated in fields: [`vertices`](`GeometryBatch::vertices`),
+/// [`indices`](`GeometryBatch::indices`), and [`commands`](`GeometryBatch::commands`).
 /// In such a way that they can be efficiently transferred and rendered through a pool of
 /// fixed-size buffers.
 ///
-/// Backend-specfic `render_geometry` calls are used for actual rendering.
+/// See a particlar backend for actual rendering: [`MiniquadBatch`]
 ///
-pub struct GeometryBuilder<Vertex: Copy> {
+pub struct GeometryBatch<Vertex: Copy> {
     /// batched vertices
     pub vertices: Vec<Vertex>,
     /// batched indices
@@ -78,7 +81,7 @@ pub struct GeometryBuilder<Vertex: Copy> {
     buffer_indices_end: usize,
 }
 
-impl<Vertex: Copy> GeometryBuilder<Vertex> {
+impl<Vertex: Copy> GeometryBatch<Vertex> {
     pub fn new(max_buffer_vertices: usize, max_buffer_indices: usize) -> Self {
         assert!(max_buffer_vertices <= IndexType::MAX as usize + 1);
         let mut commands = Vec::new();
@@ -204,7 +207,7 @@ impl<Vertex: Copy> GeometryBuilder<Vertex> {
     }
 }
 
-impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> {
+impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     #[inline]
     pub fn add_circle<const ANTIALIAS: bool>(
         &mut self,
@@ -1033,7 +1036,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
     }
 }
 
-impl<Vertex: Copy + VertexPos2> GeometryBuilder<Vertex> {
+impl<Vertex: Copy + VertexPos2> GeometryBatch<Vertex> {
     pub fn add_position_indices(
         &mut self,
         positions: &[[f32; 2]],
@@ -1118,7 +1121,7 @@ impl<Vertex: Copy + VertexPos2> GeometryBuilder<Vertex> {
     }
 }
 
-impl<Vertex: Copy + VertexPos3> GeometryBuilder<Vertex> {
+impl<Vertex: Copy + VertexPos3> GeometryBatch<Vertex> {
     pub fn add_box(&mut self, center: [f32; 3], size: [f32; 3], def: Vertex) {
         let (vs, is, first) = self.allocate(8, 36, def);
         for (v, i) in vs.iter_mut().zip(0..8) {
@@ -1158,7 +1161,7 @@ impl<Vertex: Copy + VertexPos3> GeometryBuilder<Vertex> {
     }
 }
 
-impl<Vertex: Copy + VertexPos2 + VertexUV> GeometryBuilder<Vertex> {
+impl<Vertex: Copy + VertexPos2 + VertexUV> GeometryBatch<Vertex> {
     pub fn add_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], def: Vertex) -> &mut [Vertex] {
         let (vs, is, first) = self.allocate(4, 6, def);
 

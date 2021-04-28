@@ -1,17 +1,16 @@
 use core::default::Default;
 use glam::vec2;
 use miniquad::{
-    conf, date, Bindings, Buffer, BufferLayout, BufferType, Context, EventHandler, Pipeline,
-    Shader, ShaderMeta, Texture, UniformBlockLayout, UniformDesc, UniformType, UserData,
-    VertexAttribute, VertexFormat,
+    conf, date, Bindings, BlendFactor, BlendState, BlendValue, Buffer, BufferLayout, BufferType,
+    Context, Equation, EventHandler, Pipeline, PipelineParams, Shader, ShaderMeta, Texture,
+    UniformBlockLayout, UniformDesc, UniformType, UserData, VertexAttribute, VertexFormat,
 };
-use realtime_drawing::example::*;
-use realtime_drawing::*;
+use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
 
-struct Stage {
-    geometry: GeometryBuilder<VertexPos3UvColor>,
+struct Example {
+    batch: MiniquadBatch<VertexPos3UvColor>,
     pipeline: Pipeline,
-    bindings: Bindings,
+    white_texture: Texture,
     window_size: [f32; 2],
 }
 
@@ -20,42 +19,29 @@ pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
 }
 
-impl Stage {
-    pub fn new(ctx: &mut Context) -> Stage {
-        #[rustfmt::skip]
-        let vertices = [
-            VertexPos3UvColor { pos: [-5.0, -5.0, 0.0], uv: [0.0, 0.0], color: [255, 255, 255, 255] },
-            VertexPos3UvColor { pos: [ 5.0, -5.0, 0.0], uv: [1.0, 0.0], color: [255, 255, 255, 255] },
-            VertexPos3UvColor { pos: [ 5.0,  5.0, 0.0], uv: [1.0, 1.0], color: [255, 255, 255, 255] },
-            VertexPos3UvColor { pos: [-5.0,  5.0, 0.0], uv: [0.0, 1.0], color: [255, 255, 255, 255] },
-        ];
-        let vertex_buffer = Buffer::immutable(ctx, BufferType::VertexBuffer, &vertices);
+impl Example {
+    pub fn new(context: &mut Context) -> Example {
+        let batch = MiniquadBatch::new(4096, 4096);
 
-        let indices: [i16; 6] = [0, 1, 2, 0, 2, 3];
-        let index_buffer = Buffer::immutable(ctx, BufferType::IndexBuffer, &indices);
+        let white_texture = Texture::from_rgba8(
+            context,
+            4,
+            4,
+            &[
+                // white RGBA-image 4x4 pixels
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            ],
+        );
+        let pipeline = Example::create_pipeline(context);
 
-        let pixels: [u8; 4 * 4 * 4] = [
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00,
-            0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF,
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0xFF, 0xFF,
-            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-            0xFF, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-        ];
-        let texture = Texture::from_rgba8(ctx, 4, 4, &pixels);
-
-        let pipeline = Stage::create_pipeline(ctx);
-        let bindings = Bindings {
-            vertex_buffers: vec![vertex_buffer],
-            index_buffer: index_buffer,
-            images: vec![texture],
-        };
-
-        let geometry = GeometryBuilder::new(1024, 1024);
-
-        Stage {
-            geometry,
+        Example {
+            batch,
             pipeline,
-            bindings,
+            white_texture,
             window_size: [800.0, 600.0],
         }
     }
@@ -70,7 +56,7 @@ impl Stage {
             varying lowp vec2 v_uv;
             varying lowp vec4 v_color;
             void main() {
-                gl_Position = vec4((pos + offset) / screen_size, 0, 1);
+                gl_Position = vec4((pos + offset) / screen_size * 2.0 - 1.0, 0, 1);
                 v_uv = uv;
                 v_color = color / 255.0;
             }"#;
@@ -98,7 +84,7 @@ impl Stage {
         )
         .unwrap();
 
-        let pipeline = Pipeline::new(
+        let pipeline = Pipeline::with_params(
             ctx,
             &[BufferLayout::default()],
             &[
@@ -107,27 +93,37 @@ impl Stage {
                 VertexAttribute::new("color", VertexFormat::Byte4),
             ],
             shader,
+            PipelineParams {
+                alpha_blend: Some(BlendState::new(
+                    Equation::Add,
+                    BlendFactor::Value(BlendValue::SourceAlpha),
+                    BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
+                )),
+                color_blend: Some(BlendState::new(
+                    Equation::Add,
+                    BlendFactor::Value(BlendValue::SourceAlpha),
+                    BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
+                )),
+                ..Default::default()
+            },
         );
         pipeline
     }
 }
 
-impl EventHandler for Stage {
-    fn update(&mut self, _ctx: &mut Context) {}
+impl EventHandler for Example {
+    fn update(&mut self, _context: &mut Context) {}
 
-    fn resize_event(&mut self, _ctx: &mut Context, width: f32, height: f32) {
-        self.window_size = [width, height];
-    }
+    fn draw(&mut self, context: &mut Context) {
+        context.begin_default_pass(Default::default());
 
-    fn draw(&mut self, ctx: &mut Context) {
-        let t = date::now();
+        self.batch.clear();
+        self.batch.set_image(self.white_texture);
 
-        ctx.begin_default_pass(Default::default());
-
-        self.geometry.add_circle_outline::<true>(
+        self.batch.geometry.add_circle_outline::<true>(
             vec2(self.window_size[0] * 0.5, self.window_size[1] * 0.5),
             64.0,
-            2.0,
+            1.0,
             64,
             VertexPos3UvColor {
                 pos: [0.0, 0.0, 0.0],
@@ -136,25 +132,25 @@ impl EventHandler for Stage {
             },
         );
 
-        ctx.apply_pipeline(&self.pipeline);
-        ctx.apply_bindings(&self.bindings);
-        for i in 0..10 {
-            let t = t + i as f64 * 0.3;
+        context.apply_pipeline(&self.pipeline);
+        context.apply_uniforms(&ShaderUniforms {
+            offset: [0.0, 0.0],
+            screen_size: self.window_size,
+        });
+        self.batch.draw(context);
 
-            ctx.apply_uniforms(&ShaderUniforms {
-                offset: [t.sin() as f32 * 64.0, (t * 3.).cos() as f32 * 64.0],
-                screen_size: self.window_size,
-            });
-            ctx.draw(0, 6, 1);
-        }
-        ctx.end_render_pass();
+        context.end_render_pass();
 
-        ctx.commit_frame();
+        context.commit_frame();
+    }
+
+    fn resize_event(&mut self, _context: &mut Context, width: f32, height: f32) {
+        self.window_size = [width, height];
     }
 }
 
 fn main() {
-    miniquad::start(conf::Conf::default(), |mut ctx| {
-        UserData::owning(Stage::new(&mut ctx), ctx)
+    miniquad::start(conf::Conf::default(), |mut context| {
+        UserData::owning(Example::new(&mut context), context)
     });
 }

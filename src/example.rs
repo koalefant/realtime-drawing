@@ -1,9 +1,11 @@
-//! An example of struct defining custom vertex format that can be used together with `realtime_drawing`
 use core::default::Default;
 use crate::{VertexPos2, VertexPos3, VertexUV, VertexColor};
 
 #[repr(C)]
 #[derive(Copy, Clone)]
+/// Example of struct defining traits for custom vertex format.
+///
+/// See `Vertex*` trait implementations below.
 pub struct VertexPos3UvColor {
     pub pos: [f32; 3],
     pub uv: [f32; 2],
