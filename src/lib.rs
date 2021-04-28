@@ -13,11 +13,11 @@
 //!
 //! Individual drawing operations such as [`GeometryBuilder::add_circle`] or [`GeometryBuilder::add_polyline`] are available in [`GeometryBuilder`] impl.
 pub mod example;
+use core::default::Default;
+use core::iter::Iterator;
+use core::marker::Copy;
 use glam::vec2;
 use glam::Vec2;
-use core::default::Default;
-use core::marker::Copy;
-use core::iter::Iterator;
 
 type IndexType = u16;
 
@@ -131,7 +131,8 @@ impl<Vertex: Copy> GeometryBuilder<Vertex> {
                 num_indices: old_indices + self.max_buffer_indices - self.buffer_indices_end,
             };
             self.last_indices_command = self.commands.len();
-            self.commands.push(GeometryCommand::Indices { num_indices: 0 });
+            self.commands
+                .push(GeometryCommand::Indices { num_indices: 0 });
             self.buffer_indices_end = old_indices + self.max_buffer_indices;
         }
         if vertices_overflow {
@@ -139,7 +140,8 @@ impl<Vertex: Copy> GeometryBuilder<Vertex> {
                 num_vertices: old_vertices + self.max_buffer_vertices - self.buffer_vertices_end,
             };
             self.last_vertices_command = self.commands.len();
-            self.commands.push(GeometryCommand::Vertices { num_vertices: 0 });
+            self.commands
+                .push(GeometryCommand::Vertices { num_vertices: 0 });
             self.buffer_vertices_end = old_vertices + self.max_buffer_vertices;
         }
         let buffer_vertices_begin = self.buffer_vertices_end - self.max_buffer_vertices;
@@ -167,16 +169,18 @@ impl<Vertex: Copy> GeometryBuilder<Vertex> {
         self.vertices.clear();
         self.commands.clear();
         self.last_indices_command = self.commands.len();
-        self.commands.push(GeometryCommand::Indices { num_indices: 0 });
+        self.commands
+            .push(GeometryCommand::Indices { num_indices: 0 });
         self.last_vertices_command = self.commands.len();
-        self.commands.push(GeometryCommand::Vertices { num_vertices: 0 });
+        self.commands
+            .push(GeometryCommand::Vertices { num_vertices: 0 });
         self.draw_indices = 0;
         self.buffer_indices_end = self.max_buffer_indices;
         self.buffer_vertices_end = self.max_buffer_vertices;
     }
 
     /// Finalizes command list. This function is expected to be called before
-    /// transmitting geometry data into vertex/index buffers.
+    /// uploading vertex/index buffers.
     pub fn finish_commands(&mut self) {
         let num_vertices = self.vertices.len();
         let num_indices = self.indices.len();
@@ -197,12 +201,17 @@ impl<Vertex: Copy> GeometryBuilder<Vertex> {
             self.draw_indices = num_indices;
         }
     }
-
 }
 
 impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> {
     #[inline]
-    pub fn add_circle<const ANTIALIAS: bool>(&mut self, center: Vec2, radius: f32, num_segments: usize, def: Vertex) {
+    pub fn add_circle<const ANTIALIAS: bool>(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        num_segments: usize,
+        def: Vertex,
+    ) {
         let pixel = self.pixel_size;
         let half_pixel = pixel * 0.5;
         let alpha = def.alpha() as f32;
@@ -240,7 +249,14 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
     }
 
     #[inline]
-    pub fn add_circle_outline<const ANTIALIAS: bool>(&mut self, center: Vec2, radius: f32, thickness: f32, num_segments: usize, def: Vertex) {
+    pub fn add_circle_outline<const ANTIALIAS: bool>(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        thickness: f32,
+        num_segments: usize,
+        def: Vertex,
+    ) {
         let pixel_size = self.pixel_size;
         if thickness > pixel_size {
             let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 18, def);
@@ -249,10 +265,12 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
                 let angle = i as f32 / num_segments as f32 * 2.0 * std::f32::consts::PI;
                 let cos = angle.cos();
                 let sin = angle.sin();
-                for (v, p) in pair
-                    .iter_mut()
-                    .zip(&[(-ht - pixel_size, 0), (-ht, 255), (ht, 255), (ht + pixel_size, 0)])
-                {
+                for (v, p) in pair.iter_mut().zip(&[
+                    (-ht - pixel_size, 0),
+                    (-ht, 255),
+                    (ht, 255),
+                    (ht + pixel_size, 0),
+                ]) {
                     v.set_pos([
                         (center[0] + cos * (radius + p.0)).into(),
                         (center[1] + sin * (radius + p.0)).into(),
@@ -293,11 +311,15 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
                 let angle = i as f32 / num_segments as f32 * 2.0 * std::f32::consts::PI;
                 let cos = angle.cos();
                 let sin = angle.sin();
-                for (v, p) in
-                    pair.iter_mut()
-                        .zip(&[(-pixel_size, 0), (0.0, (255.0 * thickness) as u8), (pixel_size, 0)])
-                {
-                    v.set_pos([center[0] + cos * (radius + p.0), center[1] + sin * (radius + p.0)]);
+                for (v, p) in pair.iter_mut().zip(&[
+                    (-pixel_size, 0),
+                    (0.0, (255.0 * thickness) as u8),
+                    (pixel_size, 0),
+                ]) {
+                    v.set_pos([
+                        center[0] + cos * (radius + p.0),
+                        center[1] + sin * (radius + p.0),
+                    ]);
                     v.set_alpha(p.1);
                 }
             }
@@ -325,7 +347,13 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
     }
 
     // Coordinates are assumed to be pixel.
-    pub fn add_polyline<const ANTIALIAS: bool>(&mut self, points: &[Vec2], color: [u8; 4], closed: bool, thickness: f32) {
+    pub fn add_polyline<const ANTIALIAS: bool>(
+        &mut self,
+        points: &[Vec2],
+        color: [u8; 4],
+        closed: bool,
+        thickness: f32,
+    ) {
         // based on AddPoyline from Dear ImGui by Omar Cornut (MIT)
         if points.len() < 2 {
             return;
@@ -339,7 +367,11 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
         let gradient_size = self.pixel_size;
         let color_transparent = [color[0], color[1], color[2], 0];
         let index_count = if thick_line { count * 18 } else { count * 12 };
-        let vertex_count = if thick_line { points.len() * 4 } else { points.len() * 3 };
+        let vertex_count = if thick_line {
+            points.len() * 4
+        } else {
+            points.len() * 3
+        };
         let (vs, is, first) = self.allocate(vertex_count, index_count, Vertex::default());
         let mut temp_normals = Vec::new();
         let mut temp_points = Vec::new();
@@ -372,7 +404,11 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
             let mut idx1 = first;
             for i1 in 0..count {
                 let i2 = if (i1 + 1) == points.len() { 0 } else { i1 + 1 };
-                let idx2 = if (i1 + 1) == points.len() { first } else { idx1 + 3 };
+                let idx2 = if (i1 + 1) == points.len() {
+                    first
+                } else {
+                    idx1 + 3
+                };
 
                 let mut dm = (temp_normals[i1] + temp_normals[i2]) * 0.5;
                 // average normals
@@ -417,25 +453,31 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
         } else {
             let half_inner_thickness = (thickness - gradient_size) * 0.5;
             if !closed {
-                temp_points[0] = points[0] + temp_normals[0] * (half_inner_thickness + gradient_size);
+                temp_points[0] =
+                    points[0] + temp_normals[0] * (half_inner_thickness + gradient_size);
                 temp_points[1] = points[0] + temp_normals[0] * half_inner_thickness;
                 temp_points[2] = points[0] - temp_normals[0] * half_inner_thickness;
-                temp_points[3] = points[0] - temp_normals[0] * (half_inner_thickness + gradient_size);
+                temp_points[3] =
+                    points[0] - temp_normals[0] * (half_inner_thickness + gradient_size);
 
-                temp_points[(points.len() - 1) * 4 + 0] =
-                    points[points.len() - 1] + temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
-                temp_points[(points.len() - 1) * 4 + 1] =
-                    points[points.len() - 1] + temp_normals[points.len() - 1] * (half_inner_thickness);
-                temp_points[(points.len() - 1) * 4 + 2] =
-                    points[points.len() - 1] - temp_normals[points.len() - 1] * (half_inner_thickness);
-                temp_points[(points.len() - 1) * 4 + 3] =
-                    points[points.len() - 1] - temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
+                temp_points[(points.len() - 1) * 4 + 0] = points[points.len() - 1]
+                    + temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
+                temp_points[(points.len() - 1) * 4 + 1] = points[points.len() - 1]
+                    + temp_normals[points.len() - 1] * (half_inner_thickness);
+                temp_points[(points.len() - 1) * 4 + 2] = points[points.len() - 1]
+                    - temp_normals[points.len() - 1] * (half_inner_thickness);
+                temp_points[(points.len() - 1) * 4 + 3] = points[points.len() - 1]
+                    - temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
             }
 
             let mut idx1 = first;
             for i1 in 0..count {
                 let i2 = if (i1 + 1) == points.len() { 0 } else { i1 + 1 };
-                let idx2 = if (i1 + 1) == points.len() { first } else { idx1 + 4 };
+                let idx2 = if (i1 + 1) == points.len() {
+                    first
+                } else {
+                    idx1 + 4
+                };
 
                 let mut dm = temp_normals[i1] + temp_normals[i2] * 0.5;
 
@@ -507,13 +549,23 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
         }
     }
 
-    pub fn add_polyline_miter<const ANTIALIAS: bool>(&mut self, points: &[Vec2], color: [u8; 4], closed: bool, thickness: f32) {
+    pub fn add_polyline_miter<const ANTIALIAS: bool>(
+        &mut self,
+        points: &[Vec2],
+        color: [u8; 4],
+        closed: bool,
+        thickness: f32,
+    ) {
         let points_count = points.len();
         if points_count < 2 {
             return;
         }
 
-        let count = if closed { points_count } else { points_count - 1 }; // segment count
+        let count = if closed {
+            points_count
+        } else {
+            points_count - 1
+        }; // segment count
 
         let pixel_size = self.pixel_size;
         let col_trans = [color[0], color[1], color[2], 0];
@@ -580,7 +632,11 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
             let idx_count = count * max_n_idx;
             let (mut vs, mut is, first) = self.allocate(vtx_count, idx_count, v);
 
-            let half_thickness = if ANTIALIAS { thickness - pixel_size } else { thickness } * 0.5;
+            let half_thickness = if ANTIALIAS {
+                thickness - pixel_size
+            } else {
+                thickness
+            } * 0.5;
             let half_thickness_aa = half_thickness + pixel_size;
             let first_vtx_ptr = first;
             let mut unused_vertices = 0;
@@ -631,13 +687,16 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
 
                 let miter_l_recip = dx1 * dy2 - dy1 * dx2;
                 let bevel = (dx1 * dx2 + dy1 * dy2) > 1e-5;
-                let ((mlx, mly, mrx, mry), (mlax, mlay, mrax, mray)) = if miter_l_recip.abs() > 1e-3 {
+                let ((mlx, mly, mrx, mry), (mlax, mlay, mrax, mray)) = if miter_l_recip.abs() > 1e-3
+                {
                     let mut miter_l = half_thickness / miter_l_recip;
                     // Limit (inner) miter so it doesn't shoot away when miter is longer than adjacent line segments on acute angles
                     if bevel {
                         // This is too aggressive (not exactly precise)
                         let min_sqlen = if sqlen1 > sqlen2 { sqlen2 } else { sqlen1 };
-                        let miter_sqlen = ((dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2)) * miter_l * miter_l;
+                        let miter_sqlen = ((dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2))
+                            * miter_l
+                            * miter_l;
                         if miter_sqlen > min_sqlen {
                             miter_l *= (min_sqlen / miter_sqlen).sqrt();
                         }
@@ -684,8 +743,8 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
                 };
                 // The two bevel vertices if the angle is right or obtuse
                 // miter_sign == 1, iff the outer (maybe bevelled) edge is on the right, -1 iff it is on the left
-                let miter_sign =
-                    if miter_l_recip >= 0.0 { 1.0 } else { 0.0 } - if miter_l_recip < 0.0 { 1.0 } else { 0.0 };
+                let miter_sign = if miter_l_recip >= 0.0 { 1.0 } else { 0.0 }
+                    - if miter_l_recip < 0.0 { 1.0 } else { 0.0 };
                 let (b1x, b1y, b2x, b2y) = if bevel {
                     (
                         p1.x + (dx1 - dy1 * miter_sign) * half_thickness,
@@ -742,17 +801,29 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
                 let bevel_l = bevel && miter_sign < 0.0;
                 let bevel_r = bevel && miter_sign > 0.0;
 
-                vs[0].set_pos([if bevel_l { b1x } else { mlx }, if bevel_l { b1y } else { mly }]);
-                vs[1].set_pos([if bevel_r { b1x } else { mrx }, if bevel_r { b1y } else { mry }]);
+                vs[0].set_pos([
+                    if bevel_l { b1x } else { mlx },
+                    if bevel_l { b1y } else { mly },
+                ]);
+                vs[1].set_pos([
+                    if bevel_r { b1x } else { mrx },
+                    if bevel_r { b1y } else { mry },
+                ]);
 
                 if bevel {
                     vs[bi].set_pos([b2x, b2y]);
                 }
 
                 if ANTIALIAS {
-                    vs[2].set_pos([if bevel_l { b1ax } else { mlax }, if bevel_l { b1ay } else { mlay }]);
+                    vs[2].set_pos([
+                        if bevel_l { b1ax } else { mlax },
+                        if bevel_l { b1ay } else { mlay },
+                    ]);
                     vs[2].set_color(col_trans);
-                    vs[3].set_pos([if bevel_r { b1ax } else { mrax }, if bevel_r { b1ay } else { mray }]);
+                    vs[3].set_pos([
+                        if bevel_r { b1ax } else { mrax },
+                        if bevel_r { b1ay } else { mray },
+                    ]);
                     vs[3].set_color(col_trans);
                     if bevel {
                         vs[5].set_pos([b2ax, b2ay]);
@@ -832,7 +903,12 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
         }
     }
 
-    pub fn add_polyline_variable<const ANTIALIAS: bool>(&mut self, points: &[Vec2], radius: &[f32], def: Vertex) {
+    pub fn add_polyline_variable<const ANTIALIAS: bool>(
+        &mut self,
+        points: &[Vec2],
+        radius: &[f32],
+        def: Vertex,
+    ) {
         if points.len() < 2 {
             return;
         }
@@ -869,19 +945,23 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
         temp_points[3] = points[0] - temp_normals[0] * (half_inner_thickness + gradient_size);
 
         let half_inner_thickness = radius[points.len() - 1] - half_gradient;
-        temp_points[(points.len() - 1) * 4 + 0] =
-            points[points.len() - 1] + temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
+        temp_points[(points.len() - 1) * 4 + 0] = points[points.len() - 1]
+            + temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
         temp_points[(points.len() - 1) * 4 + 1] =
             points[points.len() - 1] + temp_normals[points.len() - 1] * (half_inner_thickness);
         temp_points[(points.len() - 1) * 4 + 2] =
             points[points.len() - 1] - temp_normals[points.len() - 1] * (half_inner_thickness);
-        temp_points[(points.len() - 1) * 4 + 3] =
-            points[points.len() - 1] - temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
+        temp_points[(points.len() - 1) * 4 + 3] = points[points.len() - 1]
+            - temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
 
         let mut idx1 = first;
         for i1 in 0..count {
             let i2 = if (i1 + 1) == points.len() { 0 } else { i1 + 1 };
-            let idx2 = if (i1 + 1) == points.len() { first } else { idx1 + 4 };
+            let idx2 = if (i1 + 1) == points.len() {
+                first
+            } else {
+                idx1 + 4
+            };
             let half_inner_thickness = radius[i2] - half_gradient;
             let mut dm = (temp_normals[i1] + temp_normals[i2]) * 0.5;
             let mut dm_len2 = dm.dot(dm);
@@ -938,7 +1018,12 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
         }
     }
 
-    pub fn add_capsule_chain<const ANTIALIAS: bool>(&mut self, points: &[Vec2], radius: &[f32], def: Vertex) {
+    pub fn add_capsule_chain<const ANTIALIAS: bool>(
+        &mut self,
+        points: &[Vec2],
+        radius: &[f32],
+        def: Vertex,
+    ) {
         // TODO: optimal non-overlapping implementation
         self.add_polyline_variable::<ANTIALIAS>(points, radius, def.clone());
         for (&point, &r) in points.iter().zip(radius.iter()) {
@@ -948,7 +1033,12 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBuilder<Vertex> 
 }
 
 impl<Vertex: Copy + VertexPos2> GeometryBuilder<Vertex> {
-    pub fn add_position_indices(&mut self, positions: &[[f32; 2]], indices: &[IndexType], def: Vertex) {
+    pub fn add_position_indices(
+        &mut self,
+        positions: &[[f32; 2]],
+        indices: &[IndexType],
+        def: Vertex,
+    ) {
         let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
         for (dest, pos) in vs.iter_mut().zip(positions) {
             dest.set_pos(*pos);
@@ -1051,7 +1141,12 @@ impl<Vertex: Copy + VertexPos3> GeometryBuilder<Vertex> {
         }
     }
 
-    pub fn add_position3_indices(&mut self, positions: &[[f32; 3]], indices: &[IndexType], def: Vertex) {
+    pub fn add_position3_indices(
+        &mut self,
+        positions: &[[f32; 3]],
+        indices: &[IndexType],
+        def: Vertex,
+    ) {
         let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
         for (dest, pos) in vs.iter_mut().zip(positions) {
             dest.set_pos3(*pos);
@@ -1120,14 +1215,13 @@ impl<Vertex: Copy + VertexPos2 + VertexUV> GeometryBuilder<Vertex> {
                         first + j * (divisions[0] + 1) + (i + 1),
                     ];
                     let from = (j * divisions[0] + i) as usize;
-                    is[from..from + 6].copy_from_slice(&[inds[0], inds[1], inds[2], inds[0], inds[2], inds[3]]);
+                    is[from..from + 6]
+                        .copy_from_slice(&[inds[0], inds[1], inds[2], inds[0], inds[2], inds[3]]);
                 }
             }
         }
     }
 }
-
-
 
 /// A trait to be implemented for your vertex format in to use colored or
 /// alpha-blended primitives.
