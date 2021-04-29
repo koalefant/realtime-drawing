@@ -2,7 +2,7 @@
 //!
 //! # Features
 //! - Optimized for dynamically generated content.
-//! - Local-antialiasing using blended strips.
+//! - Antialiasing of lines using blended strips.
 //! - GPU rendering: output to streamed vertex/index buffers.
 //! - Aggressive batching across primitive types.
 //! - Backend-agnostic. Comes with [`MiniquadBatch`] that implements [`miniquad`]-backend out of the box. Easy integration into existing engines.
@@ -29,7 +29,7 @@ use glam::Vec2;
 
 type IndexType = u16;
 
-/// Hosts drawing routines.
+/// Implements primitive drawing.
 ///
 /// `add_`-methods are used to draw individual primitives.
 /// [`GeometryBatch::finish_commands`] is used to finalize buffers and backend-specific

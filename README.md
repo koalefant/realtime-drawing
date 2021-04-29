@@ -3,7 +3,7 @@
 
 # Features
 * Optimized for dynamically changed content.
-* Local-antialiasing using blended strips.
+* Antialiasing of lines using blended strips.
 * GPU rendering: output to streamed vertex/index buffers.
 * Everything is batched: single draw-call is a common scenario.
 * Agnostic of backends and vertex formats. Has `miniquad` <!-- and wgpu --> backend out-of the box. Easy to integrate with a custom engine.
