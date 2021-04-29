@@ -80,7 +80,8 @@ pub struct GeometryBatch<Vertex: Copy> {
 }
 
 impl<Vertex: Copy> GeometryBatch<Vertex> {
-    pub fn new(max_buffer_vertices: usize, max_buffer_indices: usize) -> Self {
+    /// Instantiates new GeometryBatch with a given capacity.
+    pub fn with_capacity(max_buffer_vertices: usize, max_buffer_indices: usize) -> Self {
         assert!(max_buffer_vertices <= IndexType::MAX as usize + 1);
         let mut commands = Vec::new();
         let last_indices_command = commands.len();
@@ -1058,7 +1059,9 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
             *dest = index + first;
         }
     }
-    pub fn add_rect(&mut self, start: Vec2, end: Vec2, def: Vertex) {
+    pub fn add_rect(&mut self, start: Vec2, end: Vec2, color: [u8; 4]) {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let (vs, is, first) = self.allocate(4, 6, def);
         vs[0].set_pos([start.x, start.y]);
         vs[1].set_pos([end.x, start.y]);
@@ -1073,7 +1076,9 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         is[5] = first + 3;
     }
 
-    pub fn add_rect_outline(&mut self, start: Vec2, end: Vec2, thickness: f32, def: Vertex) {
+    pub fn add_rect_outline(&mut self, start: Vec2, end: Vec2, thickness: f32, color: [u8; 4]) {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let (vs, indices, first) = self.allocate(8, 24, def);
 
         let ht = thickness * 0.5;
@@ -1128,8 +1133,10 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Copy + VertexPos3> GeometryBatch<Vertex> {
-    pub fn add_box(&mut self, center: [f32; 3], size: [f32; 3], def: Vertex) {
+impl<Vertex: Copy + Default + VertexPos3 + VertexColor> GeometryBatch<Vertex> {
+    pub fn add_box(&mut self, center: [f32; 3], size: [f32; 3], color: [u8; 4]) {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let (vs, is, first) = self.allocate(8, 36, def);
         for (v, i) in vs.iter_mut().zip(0..8) {
             v.set_pos3([
@@ -1156,8 +1163,10 @@ impl<Vertex: Copy + VertexPos3> GeometryBatch<Vertex> {
         &mut self,
         positions: &[[f32; 3]],
         indices: &[IndexType],
-        def: Vertex,
+        color: [u8; 4],
     ) {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
         for (dest, pos) in vs.iter_mut().zip(positions) {
             dest.set_pos3(*pos);
@@ -1168,8 +1177,10 @@ impl<Vertex: Copy + VertexPos3> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Copy + VertexPos2 + VertexUV> GeometryBatch<Vertex> {
-    pub fn add_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], def: Vertex) -> &mut [Vertex] {
+impl<Vertex: Default + Copy + VertexPos2 + VertexUV + VertexColor> GeometryBatch<Vertex> {
+    pub fn add_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], color: [u8; 4]) -> &mut [Vertex] {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let (vs, is, first) = self.allocate(4, 6, def);
 
         vs[0].set_pos([rect[0], rect[1]]);
@@ -1196,9 +1207,11 @@ impl<Vertex: Copy + VertexPos2 + VertexUV> GeometryBatch<Vertex> {
         center: [f32; 2],
         extents: [f32; 2],
         divisions: [IndexType; 2],
-        def: Vertex,
+        color: [u8; 4],
         uv_rect: [f32; 4],
     ) {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let num_points = (divisions[0] * divisions[1]) as usize;
         let (vs, is, first) = self.allocate(num_points, 6 * num_points, def);
 

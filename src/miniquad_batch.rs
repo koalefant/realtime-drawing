@@ -7,6 +7,7 @@ use core::marker::Copy;
 use miniquad::{BufferType, Context, Buffer};
 
 const NUM_FRAMES: usize = 2;
+const DEFAULT_BATCH_CAPACITY: usize = 65535;
 
 #[cfg(feature="miniquad")]
 struct Draw {
@@ -74,10 +75,19 @@ pub struct MiniquadBatch<Vertex: Copy> {
 
 #[cfg(feature="miniquad")]
 impl<Vertex: Copy> MiniquadBatch<Vertex> {
-    pub fn new(buffer_vertices: usize, buffer_indices: usize) -> Self {
+    /// Creates new MiniquadBatch, equivalent of `MiniquadBatch::with_capacity(65535, 65535)`.
+    pub fn new()->Self {
+        Self::with_capacity(DEFAULT_BATCH_CAPACITY, DEFAULT_BATCH_CAPACITY)
+    }
+    /// Creates new MiniquadBatch with given capacity.
+    ///
+    /// Capacity limits number of vertices/indices that can be used in a single primitive.
+    ///
+    /// When capacity of individual vertex/index buffer is exhausted another buffer is created with the same capacity.
+    pub fn with_capacity(buffer_vertices: usize, buffer_indices: usize) -> Self {
         Self {
             draws: Vec::new(),
-            geometry: GeometryBatch::new(buffer_vertices, buffer_indices),
+            geometry: GeometryBatch::with_capacity(buffer_vertices, buffer_indices),
             temp_bindings: None,
             vertex_pool: [Vec::new(), Vec::new()],
             index_pool: [Vec::new(), Vec::new()],
@@ -88,6 +98,9 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
         }
     }
 
+    /// Marks beginning of the frame by performing rotation of buffers.
+    ///
+    /// This is done to prevent writing into buffers that are being used for rendering current or past frame.
     pub fn begin_frame(&mut self) {
         self.frame = (self.frame + 1) % NUM_FRAMES;
         // move unused buffers to the next frame
@@ -99,6 +112,9 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
         self.index_pool[self.frame] = unused_indices;
     }
 
+    /// Performs actual rendering.
+    ///
+    /// Does not clear buffer buffers, can be called multiple times to render exactly the same geometry.
     pub fn draw(&mut self, c: &mut Context) {
         self.geometry.finish_commands();
 
@@ -214,6 +230,7 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
         self.geometry.clear();
     }
 
+    /// Performs `draw()` followed by `clear()`
     pub fn flush(&mut self, c: &mut miniquad::Context) {
         self.draw(c);
         self.clear();

@@ -1,7 +1,7 @@
 use core::default::Default;
 use glam::vec2;
 use miniquad::{
-    conf, date, Bindings, BlendFactor, BlendState, BlendValue, Buffer, BufferLayout, BufferType,
+    conf, BlendFactor, BlendState, BlendValue, BufferLayout,
     Context, Equation, EventHandler, Pipeline, PipelineParams, Shader, ShaderMeta, Texture,
     UniformBlockLayout, UniformDesc, UniformType, UserData, VertexAttribute, VertexFormat,
 };
@@ -21,7 +21,7 @@ pub struct ShaderUniforms {
 
 impl Example {
     pub fn new(context: &mut Context) -> Example {
-        let batch = MiniquadBatch::new(4096, 4096);
+        let batch = MiniquadBatch::new();
 
         let white_texture = Texture::from_rgba8(
             context,
