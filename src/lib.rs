@@ -45,14 +45,12 @@ type IndexType = u16;
 /// geometry.add_polyline::<true>(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
 ///                               [255, 0, 0, 255], true, 2.0);
 ///
-/// // access geometry.vertices/indices/commands to perform actual rendering
+/// // upload geometry.vertices/indices and render according to geometry.commands
 ///
 /// ```
 /// # Internals
-/// Drawn primitives are accumulated in fields: [`vertices`](`GeometryBatch::vertices`),
+/// Drawn primitives are accumulated in [`vertices`](`GeometryBatch::vertices`),
 /// [`indices`](`GeometryBatch::indices`), and [`commands`](`GeometryBatch::commands`).
-/// In such a way that they can be efficiently transferred and rendered through a pool of
-/// fixed-size buffers.
 ///
 /// See a particlar backend for actual rendering: [`MiniquadBatch`]
 ///
@@ -107,7 +105,7 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
     /// Base method for implementing primitives.
     /// Allocates a slice of vertices and indices.
     /// Returns (vertices_slice, indices_slice, base_index) where
-    /// base_index is an index of first vertex in the buffer.    ///
+    /// base_index is an index of first vertex in the buffer.
     #[inline(always)]
     pub fn allocate(
         &mut self,

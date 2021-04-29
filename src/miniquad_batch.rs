@@ -36,7 +36,7 @@ struct Draw {
 /// }
 /// impl miniquad::EventHandler for Example {
 ///     fn draw(&mut self, context: &mut miniquad::Context) {
-///         context.begin_default_pass(Default::default());///
+///         context.begin_default_pass(Default::default());
 ///         self.batch.begin_frame();
 ///         self.batch.clear();
 ///         self.batch.set_image(self.texture);
