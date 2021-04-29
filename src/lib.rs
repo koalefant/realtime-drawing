@@ -212,8 +212,10 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         center: Vec2,
         radius: f32,
         num_segments: usize,
-        def: Vertex,
+        color: [u8; 4],
     ) {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let pixel = self.pixel_size;
         let half_pixel = pixel * 0.5;
         let alpha = def.alpha() as f32;
@@ -257,9 +259,11 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         radius: f32,
         thickness: f32,
         num_segments: usize,
-        def: Vertex,
+        color: [u8; 4],
     ) {
         let pixel_size = self.pixel_size;
+        let mut def = Vertex::default();
+        def.set_color(color);
         if thickness > pixel_size {
             let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 18, def);
             let ht = (thickness - pixel_size) * 0.5;
@@ -909,13 +913,16 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         &mut self,
         points: &[Vec2],
         radius: &[f32],
-        def: Vertex,
+        color: [u8; 4],
     ) {
         if points.len() < 2 {
             return;
         }
         assert!(points.len() == radius.len());
         let count = points.len() - 1;
+
+        let mut def = Vertex::default();
+        def.set_color(color);
 
         let gradient_size = self.pixel_size;
         let half_gradient = gradient_size * 0.5;
@@ -1024,23 +1031,25 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         &mut self,
         points: &[Vec2],
         radius: &[f32],
-        def: Vertex,
+        color: [u8; 4],
     ) {
         // TODO: optimal non-overlapping implementation
-        self.add_polyline_variable::<ANTIALIAS>(points, radius, def.clone());
+        self.add_polyline_variable::<ANTIALIAS>(points, radius, color);
         for (&point, &r) in points.iter().zip(radius.iter()) {
-            self.add_circle::<ANTIALIAS>(point, r, r.ceil() as usize * 3, def.clone());
+            self.add_circle::<ANTIALIAS>(point, r, r.ceil() as usize * 3, color);
         }
     }
 }
 
-impl<Vertex: Copy + VertexPos2> GeometryBatch<Vertex> {
+impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     pub fn add_position_indices(
         &mut self,
         positions: &[[f32; 2]],
         indices: &[IndexType],
-        def: Vertex,
+        color: [u8; 4],
     ) {
+        let mut def = Vertex::default();
+        def.set_color(color);
         let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
         for (dest, pos) in vs.iter_mut().zip(positions) {
             dest.set_pos(*pos);

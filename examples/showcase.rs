@@ -125,11 +125,7 @@ impl EventHandler for Example {
             64.0,
             1.0,
             64,
-            VertexPos3UvColor {
-                pos: [0.0, 0.0, 0.0],
-                uv: [0.0, 0.0],
-                color: [255, 0, 0, 255],
-            },
+            [255, 0, 0, 255]
         );
 
         context.apply_pipeline(&self.pipeline);
