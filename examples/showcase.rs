@@ -136,19 +136,23 @@ impl EventHandler for Example {
             let r = radius * (1.0 + 0.2 * ((t * 0.5 + 0.25 * thickness as f64).cos() as f32));
             let center = vec2(w * 0.25, h * 0.3);
             let num_segments = ((64.0 * view_scale) as usize).max(32);
-            self.batch.geometry.add_circle::<true>(
+            self.batch.geometry.add_circle_aa(
                 center,
                 r,
                 num_segments,
-                [0, 32, 0, 64]
+                [0, 32, 0, 64],
             );
 
-            self.batch.geometry.add_circle_outline::<true>(
+            self.batch.geometry.add_circle_outline_aa_with(
                 center,
                 r,
                 thickness * view_scale,
                 num_segments,
-                [64, 255, 64, 255]
+                |pos, alpha, u| VertexPos3UvColor {
+                    pos: [pos.x, pos.y, 0.0],
+                    color: [64, (128.0 + 64.0 * (u * 3.1415 * 6.0).cos()) as u8, 64, (255.0 * alpha) as u8],
+                    uv: [0.0, 0.0],
+                }
             );
         }
 

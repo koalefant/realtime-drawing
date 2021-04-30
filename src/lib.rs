@@ -206,32 +206,29 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
+impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     #[inline]
-    pub fn add_circle<const ANTIALIAS: bool>(
+    pub fn add_circle_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
         num_segments: usize,
-        color: [u8; 4],
+        mut to_vertex: ToVertex,
     ) {
-        let mut def = Vertex::default();
-        def.set_color(color);
         let pixel = self.pixel_size;
         let half_pixel = pixel * 0.5;
-        let alpha = def.alpha() as f32;
-        let (vs, is, first) = self.allocate(2 * num_segments + 1, num_segments * 9, def);
+        let (vs, is, first) = self.allocate(2 * num_segments + 1, num_segments * 9, Vertex::default());
         for (i, pair) in vs.chunks_mut(2).enumerate() {
-            let angle = i as f32 / num_segments as f32 * 2.0 * std::f32::consts::PI;
+            let u = i as f32 / num_segments as f32;
+            let angle = u * 2.0 * std::f32::consts::PI;
             let cos = angle.cos();
             let sin = angle.sin();
             for (v, p) in pair.iter_mut().zip(&[0.0, pixel]) {
                 let pos = center + vec2(cos, sin) * (radius - half_pixel + p);
-                v.set_pos(pos.into());
-                v.set_alpha(((1.0 - p) * alpha) as u8);
+                *v = to_vertex(pos, (1.0 - p), u);
             }
         }
-        vs.last_mut().unwrap().set_pos([center[0], center[1]]);
+        *vs.last_mut().unwrap() = to_vertex(center, 1.0, 0.0);
         let central_vertex = num_segments * 2;
 
         for (section_i, section) in is.chunks_mut(9).enumerate() {
@@ -252,37 +249,59 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
             }
         }
     }
+}
 
+impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     #[inline]
-    pub fn add_circle_outline<const ANTIALIAS: bool>(
+    pub fn add_circle_aa(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        num_segments: usize,
+        color: [u8; 4],
+    ) {
+        let mut def = Vertex::default();
+        def.set_color(color);
+        self.add_circle_aa_with(center, radius, num_segments, move |pos, alpha, _| {
+            let mut v = def;
+            v.set_pos(pos.into());
+            v.set_alpha((color[3] as f32 * alpha) as u8);
+            v
+        })
+    }
+}
+
+impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
+    /// ToVertex arguments are `(pos, alpha, u)` where u is normalized first polar coordinate on a circle.
+    #[inline]
+    pub fn add_circle_outline_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
         thickness: f32,
         num_segments: usize,
-        color: [u8; 4],
+        mut to_vertex: ToVertex,
     ) {
         let pixel_size = self.pixel_size;
-        let mut def = Vertex::default();
-        def.set_color(color);
         if thickness > pixel_size {
-            let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 18, def);
+            let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 18, Vertex::default());
             let ht = (thickness - pixel_size) * 0.5;
             for (i, pair) in vs.chunks_mut(4).enumerate() {
-                let angle = i as f32 / num_segments as f32 * 2.0 * std::f32::consts::PI;
+                let t = i as f32 / num_segments as f32;
+                let angle = t * 2.0 * std::f32::consts::PI;
                 let cos = angle.cos();
                 let sin = angle.sin();
                 for (v, p) in pair.iter_mut().zip(&[
-                    (-ht - pixel_size, 0),
-                    (-ht, 255),
-                    (ht, 255),
-                    (ht + pixel_size, 0),
+                    (-ht - pixel_size, 0.0),
+                    (-ht, 1.0),
+                    (ht, 1.0),
+                    (ht + pixel_size, 0.0),
                 ]) {
-                    v.set_pos([
+                    let pos = vec2(
                         (center[0] + cos * (radius + p.0)).into(),
-                        (center[1] + sin * (radius + p.0)).into(),
-                    ]);
-                    v.set_alpha(p.1);
+                        (center[1] + sin * (radius + p.0)).into()
+                    );
+                    *v = to_vertex(pos, p.1, t);
                 }
             }
 
@@ -313,21 +332,22 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
                 }
             }
         } else {
-            let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 12, def);
+            let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 12, Vertex::default());
             for (i, pair) in vs.chunks_mut(4).enumerate() {
-                let angle = i as f32 / num_segments as f32 * 2.0 * std::f32::consts::PI;
+                let t = i as f32 / num_segments as f32;
+                let angle = t * 2.0 * std::f32::consts::PI;
                 let cos = angle.cos();
                 let sin = angle.sin();
                 for (v, p) in pair.iter_mut().zip(&[
-                    (-pixel_size, 0),
-                    (0.0, (255.0 * thickness) as u8),
-                    (pixel_size, 0),
+                    (-pixel_size, 0.0),
+                    (0.0, thickness),
+                    (pixel_size, 0.0),
                 ]) {
-                    v.set_pos([
+                    let pos = vec2(
                         center[0] + cos * (radius + p.0),
                         center[1] + sin * (radius + p.0),
-                    ]);
-                    v.set_alpha(p.1);
+                    );
+                    *v = to_vertex(pos, p.1, t);
                 }
             }
             for (section_i, section) in is.chunks_mut(12).enumerate() {
@@ -351,6 +371,28 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
                 }
             }
         }
+    }
+}
+
+impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
+    #[inline]
+    pub fn add_circle_outline_aa(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        thickness: f32,
+        num_segments: usize,
+        color: [u8; 4],
+    ) {
+        let pixel_size = self.pixel_size;
+        let mut def = Vertex::default();
+        def.set_color(color);
+        self.add_circle_outline_aa_with(center, radius, thickness, num_segments, |pos, alpha, _u| {
+            let mut v = def;
+            v.set_pos(pos.into());
+            v.set_alpha((255.0 * alpha) as u8);
+            v
+        })
     }
 
     // Coordinates are assumed to be pixel.
@@ -910,7 +952,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         }
     }
 
-    pub fn add_polyline_variable<const ANTIALIAS: bool>(
+    pub fn add_polyline_variable_aa(
         &mut self,
         points: &[Vec2],
         radius: &[f32],
@@ -1028,16 +1070,16 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         }
     }
 
-    pub fn add_capsule_chain<const ANTIALIAS: bool>(
+    pub fn add_capsule_chain_aa<const ANTIALIAS: bool>(
         &mut self,
         points: &[Vec2],
         radius: &[f32],
         color: [u8; 4],
     ) {
         // TODO: optimal non-overlapping implementation
-        self.add_polyline_variable::<ANTIALIAS>(points, radius, color);
+        self.add_polyline_variable_aa(points, radius, color);
         for (&point, &r) in points.iter().zip(radius.iter()) {
-            self.add_circle::<ANTIALIAS>(point, r, r.ceil() as usize * 3, color);
+            self.add_circle_aa(point, r, r.ceil() as usize * 3, color);
         }
     }
 }
