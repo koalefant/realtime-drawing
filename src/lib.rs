@@ -207,6 +207,7 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
+    /// ToVertex arguments are `(pos, alpha, u)` where u is normalized polar coordinate on a circle.
     #[inline]
     pub fn add_circle_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
@@ -272,7 +273,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
-    /// ToVertex arguments are `(pos, alpha, u)` where u is normalized first polar coordinate on a circle.
+    /// ToVertex arguments are `(pos, alpha, u)` where u is normalized polar coordinate on a circle.
     #[inline]
     pub fn add_circle_outline_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,

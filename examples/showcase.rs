@@ -37,7 +37,7 @@ impl Example {
             batch,
             pipeline,
             white_texture,
-            window_size: [800.0, 600.0],
+            window_size: [1280.0, 720.0],
         }
     }
 
@@ -121,21 +121,22 @@ impl EventHandler for Example {
         self.batch.set_image(self.white_texture);
 
         let [w, h] = self.window_size;
-        let h = 600.0 * h / w;
-        let w = 600.0;
+        let h = 1280.0 * h / w;
+        let w = 1280.0;
         let view_scale = self.window_size[0] / w;
         self.batch.geometry.pixel_size = 1.0 / view_scale;
 
         // pulsing circles
-        for &(radius, thickness) in [
+        for (index, &(radius, thickness)) in [
             (48.0, 0.25),
             (64.0, 0.5),
             (80.0, 1.0),
-            (96.0, 2.0),
-        ].iter().rev() {
-            let r = radius * (1.0 + 0.2 * ((t * 0.5 + 0.25 * thickness as f64).cos() as f32));
+            (96.0, 4.0),
+        ].iter().rev().enumerate() {
+            let r = radius * (1.0 + 0.05 * ((t * 0.5 + 0.25 * index as f64).cos() as f32));
             let center = vec2(w * 0.25, h * 0.3);
             let num_segments = ((64.0 * view_scale) as usize).max(32);
+            // fill
             self.batch.geometry.add_circle_aa(
                 center,
                 r,
@@ -143,14 +144,25 @@ impl EventHandler for Example {
                 [0, 32, 0, 64],
             );
 
+            // dark outline
+            self.batch.geometry.add_circle_outline_aa(
+                center,
+                r,
+                (thickness + 2.0),
+                num_segments,
+                [0, 32, 0, 255]
+            );
+
+            // circle outline with circular gradient
             self.batch.geometry.add_circle_outline_aa_with(
                 center,
                 r,
-                thickness * view_scale,
+                thickness,
                 num_segments,
                 |pos, alpha, u| VertexPos3UvColor {
                     pos: [pos.x, pos.y, 0.0],
-                    color: [64, (128.0 + 64.0 * (u * 3.1415 * 6.0).cos()) as u8, 64, (255.0 * alpha) as u8],
+                    // circular gradient calculation
+                    color: [64, (160.0 + 32.0 * ((u + (t * 0.1).fract() as f32) * std::f32::consts::PI * 6.0).cos()) as u8, 64, (255.0 * alpha) as u8],
                     uv: [0.0, 0.0],
                 }
             );
@@ -188,6 +200,8 @@ impl EventHandler for Example {
 fn main() {
     miniquad::start(conf::Conf{
         sample_count: 1,
+        window_width: 1280,
+        window_height: 720,
         ..Default::default()
     }, |mut context| {
         UserData::owning(Example::new(&mut context), context)
