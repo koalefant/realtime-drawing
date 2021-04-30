@@ -12,8 +12,8 @@
 //! - WebAssembly support.
 //! - Pure rust, no unsafe code.
 //!
-//! Individual drawing operations such as [`GeometryBatch::add_circle`] or
-//! [`GeometryBatch::add_polyline`] are available in [`GeometryBatch`] implementation.
+//! Individual drawing operations such as [`GeometryBatch::add_circle_aa`] or
+//! [`GeometryBatch::add_polyline_aa`] are available in [`GeometryBatch`] implementation.
 //!
 /// [`miniquad`]: https://docs.rs/miniquad/
 mod example;
@@ -32,8 +32,6 @@ type IndexType = u16;
 /// Implements primitive drawing.
 ///
 /// `add_`-methods are used to draw individual primitives.
-/// [`GeometryBatch::finish_commands`] is used to finalize buffers and backend-specific
-/// call is used for the actual rendering.
 ///
 /// # Example
 ///
@@ -41,8 +39,8 @@ type IndexType = u16;
 /// // initialization stage
 /// let geometry = GeometryBatch::new(1024, 1024);
 /// geometry.clear();
-/// geometry.add_circle::<true>(vec2(512.0, 512.0), 128.0, 64);
-/// geometry.add_polyline::<true>(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
+/// geometry.add_circle_aa(vec2(512.0, 512.0), 128.0, 64);
+/// geometry.add_polyline_aa(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
 ///                               [255, 0, 0, 255], true, 2.0);
 ///
 /// // upload geometry.vertices/indices and render according to geometry.commands
@@ -52,14 +50,16 @@ type IndexType = u16;
 /// Drawn primitives are accumulated in [`vertices`](`GeometryBatch::vertices`),
 /// [`indices`](`GeometryBatch::indices`), and [`commands`](`GeometryBatch::commands`).
 ///
-/// See a particlar backend for actual rendering: [`MiniquadBatch`]
+/// [`GeometryBatch::finish_commands`] is normally used to finalize command list before drawing.
+///
+/// This type normally used as a part of backend-specific batch. See: [`MiniquadBatch`]
 ///
 pub struct GeometryBatch<Vertex: Copy> {
-    /// batched vertices
+    /// Batched vertices.
     pub vertices: Vec<Vertex>,
-    /// batched indices
+    /// Batched indices.
     pub indices: Vec<IndexType>,
-    /// list of drawing commands
+    /// List of emitted drawing commands.
     pub commands: Vec<GeometryCommand>,
 
     // setup
@@ -207,7 +207,7 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
-    /// ToVertex arguments are `(pos, alpha, u)` where u is normalized polar coordinate on a circle.
+    /// Closure arguments are `(pos, alpha, u)` where `u` is normalized polar coordinate on a circle.
     #[inline]
     pub fn add_circle_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
@@ -218,6 +218,7 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     ) {
         let pixel = self.pixel_size;
         let half_pixel = pixel * 0.5;
+        self.vertices.extend(std::iter::once(to_vertex(center, 1.0, 0.0)));
         let (vs, is, first) = self.allocate(2 * num_segments + 1, num_segments * 9, Vertex::default());
         for (i, pair) in vs.chunks_mut(2).enumerate() {
             let u = i as f32 / num_segments as f32;
@@ -226,7 +227,7 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
             let sin = angle.sin();
             for (v, p) in pair.iter_mut().zip(&[0.0, pixel]) {
                 let pos = center + vec2(cos, sin) * (radius - half_pixel + p);
-                *v = to_vertex(pos, (1.0 - p), u);
+                *v = to_vertex(pos, 1.0 - p, u);
             }
         }
         *vs.last_mut().unwrap() = to_vertex(center, 1.0, 0.0);
@@ -253,6 +254,9 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
+    /// Adds filled circle positioned at `center` with `radius` and `thickness`.
+    ///
+    /// Circle outer edge is constructed out of `num_segments`-linear segments.
     #[inline]
     pub fn add_circle_aa(
         &mut self,
@@ -273,7 +277,18 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
-    /// ToVertex arguments are `(pos, alpha, u)` where u is normalized polar coordinate on a circle.
+    /// Adds outline of circle positioned at `center` with `radius` and `thickness`.
+    ///
+    /// The circle is constructed out of `num_segments`-linear segments.
+    ///
+    /// Supplied closure can be used to:
+    /// - Construct vertex in user-defined format.
+    /// - Parametrize vertex based on position on circle.
+    /// - Manipulate vertex position.
+    ///
+    /// Closure arguments are `(pos, alpha, u)` where u is normalized polar coordinate on a circle.
+    ///
+    /// `_aa` suffix signifies presence of local-antialiasing.
     #[inline]
     pub fn add_circle_outline_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
@@ -385,7 +400,6 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         num_segments: usize,
         color: [u8; 4],
     ) {
-        let pixel_size = self.pixel_size;
         let mut def = Vertex::default();
         def.set_color(color);
         self.add_circle_outline_aa_with(center, radius, thickness, num_segments, |pos, alpha, _u| {
@@ -397,7 +411,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     }
 
     // Coordinates are assumed to be pixel.
-    pub fn add_polyline<const ANTIALIAS: bool>(
+    pub fn add_polyline_aa(
         &mut self,
         points: &[Vec2],
         color: [u8; 4],
@@ -599,7 +613,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         }
     }
 
-    pub fn add_polyline_miter<const ANTIALIAS: bool>(
+    pub fn add_polyline_miter_aa(
         &mut self,
         points: &[Vec2],
         color: [u8; 4],
@@ -623,6 +637,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         let mut v = Vertex::default();
         v.set_color(color);
 
+        const ANTIALIAS: bool = true;
         if ANTIALIAS && thickness <= pixel_size {
             // Anti-aliased stroke approximation
             let idx_count = count * 12;
@@ -1071,7 +1086,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         }
     }
 
-    pub fn add_capsule_chain_aa<const ANTIALIAS: bool>(
+    pub fn add_capsule_chain_aa(
         &mut self,
         points: &[Vec2],
         radius: &[f32],

@@ -31,7 +31,7 @@ struct Draw {
 ///         Self {
 ///             texture: miniquad::Texture::new(/* ... */),
 ///             pipeline: miniquad::Pipeline::new(/* ... */),
-///             batch: MiniquadBatch::new(4096, 4096),
+///             batch: MiniquadBatch::new(),
 ///         }
 ///     }
 /// }
@@ -41,13 +41,8 @@ struct Draw {
 ///         self.batch.begin_frame();
 ///         self.batch.clear();
 ///         self.batch.set_image(self.texture);
-///         self.batch.geometry.add_circle_outline::<true>(vec2(256.0, 256.0), 128.0, 1.0, 64,
-///             VertexPos3UvColor {
-///                 pos: [0.0, 0.0, 0.0],
-///                 uv: [0.0, 0.0],
-///                 color: [255, 0, 0, 255],
-///             },
-///         );
+///         self.batch.geometry
+///             .add_circle_outline_aa(vec2(256.0, 256.0), 128.0, 1.0, 64, [255, 0, 0, 255]);
 ///
 ///         context.apply_pipeline(&self.pipeline);
 ///         self.batch.draw(context);
