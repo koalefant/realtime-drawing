@@ -225,9 +225,9 @@ impl EventHandler for Example {
 
         // tree
         let tree = Tree {
-            seed: 0xdeadbeef,
+            seed: 0xbeef31bc,
             color: [32, 32, 32, 255],
-            thickness: 4.0,
+            thickness: 12.0,
             thickness_extra: 4.0,
             time,
         };
@@ -236,6 +236,7 @@ impl EventHandler for Example {
             vec2(w * 0.6, h * 0.7 + 80.0),
             vec2(0.0, -1.0),
             1,
+            0,
         );
 
         let tree = Tree{
@@ -248,6 +249,7 @@ impl EventHandler for Example {
             vec2(w * 0.6, h * 0.7 + 80.0),
             vec2(0.0, -1.0),
             1,
+            0,
         );
 
 
@@ -295,29 +297,28 @@ impl Tree {
         start: Vec2,
         dir: Vec2,
         id: u32,
+        depth: i32,
     ) {
         let r = random_hash2(self.seed, id);
         let rf1 = (r & (1024 - 1)) as f32 / 1024.0;
-        let rf2 = ((r >> 10) & (1024 - 1)) as f32 / 1024.0;
-        let rf3 = ((r >> 20) & (1024 - 1)) as f32 / 1024.0;
 
-        let end = start + dir * (24.0 + rf1 * 8.0) +
-            vec2(
-                (random_noise(id, self.time * 0.3) - 0.5) * 24.0,
-                (random_noise(id + 1, self.time * 0.3 + 0.5) - 0.5) * 8.0);
+        let rf2 = random_noise(id, self.time * 0.3);
+        let rf3 = random_noise(id + 17, self.time * 0.3);
 
-        geometry.add_polyline_miter_aa(&[start, end], self.color, false, self.thickness + self.thickness_extra);
+        let end = start + dir * (60.0 / (1.0 + depth as f32 * 0.2) as f32 + rf1 * 8.0);
 
-        let max_depth = (1 << 16);
-        if (id & max_depth) == 0 {
-            let both = (r & 0xff) < 80;
+        let thickness = self.thickness / (1.0 + depth as f32 * 0.3) + self.thickness_extra;
+        geometry.add_polyline_miter_aa(&[start, end], self.color, false, thickness);
+
+        if depth < 16 {
+            let both = (r & 0xff) < 70;
             if (r & (1 << 16)) != 0 || both {
-                let dir_l = (dir - dir.perp() * (0.3 + rf2 * 0.4)).normalize() * dir.length() * 0.95;
-                self.draw_recurse(geometry, end, dir_l, (id << 1) | 0);
+                let dir_l = (dir - dir.perp() * (0.2 + rf2 * 0.2)).normalize();
+                self.draw_recurse(geometry, end, dir_l, id, depth + 1);
             } 
             if (r & (1 << 16)) == 0 || both {
-                let dir_r = (dir + dir.perp() * (0.3 + rf3 * 0.4)).normalize() * dir.length() * 0.95;
-                self.draw_recurse(geometry, end, dir_r, (id << 1) | 1);
+                let dir_r = (dir + dir.perp() * (0.2 + rf3 * 0.2)).normalize();
+                self.draw_recurse(geometry, end, dir_r, id | (1 << depth), depth + 1);
             }
         }
     }
