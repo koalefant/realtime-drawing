@@ -1,5 +1,5 @@
+use crate::{VertexColor, VertexPos2, VertexPos3, VertexUV};
 use core::default::Default;
-use crate::{VertexPos2, VertexPos3, VertexUV, VertexColor};
 
 #[repr(C)]
 #[derive(Copy, Clone)]

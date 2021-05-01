@@ -18,8 +18,8 @@
 /// [`miniquad`]: https://docs.rs/miniquad/
 mod example;
 mod miniquad_batch;
-pub use miniquad_batch::MiniquadBatch;
 pub use example::VertexPos3UvColor;
+pub use miniquad_batch::MiniquadBatch;
 
 use core::default::Default;
 use core::iter::Iterator;
@@ -218,8 +218,8 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     ) {
         let pixel = self.pixel_size;
         let half_pixel = pixel * 0.5;
-        self.vertices.extend(std::iter::once(to_vertex(center, 1.0, 0.0)));
-        let (vs, is, first) = self.allocate(2 * num_segments + 1, num_segments * 9, Vertex::default());
+        let (vs, is, first) =
+            self.allocate(2 * num_segments + 1, num_segments * 9, Vertex::default());
         for (i, pair) in vs.chunks_mut(2).enumerate() {
             let u = i as f32 / num_segments as f32;
             let angle = u * 2.0 * std::f32::consts::PI;
@@ -300,7 +300,8 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     ) {
         let pixel_size = self.pixel_size;
         if thickness > pixel_size {
-            let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 18, Vertex::default());
+            let (vs, is, first) =
+                self.allocate(4 * num_segments, num_segments * 18, Vertex::default());
             let ht = (thickness - pixel_size) * 0.5;
             for (i, pair) in vs.chunks_mut(4).enumerate() {
                 let t = i as f32 / num_segments as f32;
@@ -315,7 +316,7 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
                 ]) {
                     let pos = vec2(
                         (center[0] + cos * (radius + p.0)).into(),
-                        (center[1] + sin * (radius + p.0)).into()
+                        (center[1] + sin * (radius + p.0)).into(),
                     );
                     *v = to_vertex(pos, p.1, t);
                 }
@@ -348,17 +349,17 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
                 }
             }
         } else {
-            let (vs, is, first) = self.allocate(4 * num_segments, num_segments * 12, Vertex::default());
+            let (vs, is, first) =
+                self.allocate(4 * num_segments, num_segments * 12, Vertex::default());
             for (i, pair) in vs.chunks_mut(4).enumerate() {
                 let t = i as f32 / num_segments as f32;
                 let angle = t * 2.0 * std::f32::consts::PI;
                 let cos = angle.cos();
                 let sin = angle.sin();
-                for (v, p) in pair.iter_mut().zip(&[
-                    (-pixel_size, 0.0),
-                    (0.0, thickness),
-                    (pixel_size, 0.0),
-                ]) {
+                for (v, p) in
+                    pair.iter_mut()
+                        .zip(&[(-pixel_size, 0.0), (0.0, thickness), (pixel_size, 0.0)])
+                {
                     let pos = vec2(
                         center[0] + cos * (radius + p.0),
                         center[1] + sin * (radius + p.0),
@@ -402,12 +403,18 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     ) {
         let mut def = Vertex::default();
         def.set_color(color);
-        self.add_circle_outline_aa_with(center, radius, thickness, num_segments, |pos, alpha, _u| {
-            let mut v = def;
-            v.set_pos(pos.into());
-            v.set_alpha((255.0 * alpha) as u8);
-            v
-        })
+        self.add_circle_outline_aa_with(
+            center,
+            radius,
+            thickness,
+            num_segments,
+            |pos, alpha, _u| {
+                let mut v = def;
+                v.set_pos(pos.into());
+                v.set_alpha((255.0 * alpha) as u8);
+                v
+            },
+        )
     }
 
     // Coordinates are assumed to be pixel.
@@ -968,12 +975,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         }
     }
 
-    pub fn add_polyline_variable_aa(
-        &mut self,
-        points: &[Vec2],
-        radius: &[f32],
-        color: [u8; 4],
-    ) {
+    pub fn add_polyline_variable_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
         if points.len() < 2 {
             return;
         }
@@ -1086,12 +1088,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         }
     }
 
-    pub fn add_capsule_chain_aa(
-        &mut self,
-        points: &[Vec2],
-        radius: &[f32],
-        color: [u8; 4],
-    ) {
+    pub fn add_capsule_chain_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
         // TODO: optimal non-overlapping implementation
         self.add_polyline_variable_aa(points, radius, color);
         for (&point, &r) in points.iter().zip(radius.iter()) {

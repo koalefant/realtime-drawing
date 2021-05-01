@@ -1,12 +1,16 @@
 use core::default::Default;
-use glam::vec2;
-use miniquad::{conf, BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, EventHandler, Pipeline, PipelineParams, Shader, ShaderMeta, Texture, UniformBlockLayout, UniformDesc, UniformType, UserData, VertexAttribute, VertexFormat, PassAction};
-use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
+use glam::{vec2, Vec2};
+use miniquad::{
+    conf, BlendFactor, BlendState, BlendValue, BufferLayout, Context, Equation, EventHandler,
+    PassAction, Pipeline, PipelineParams, Shader, ShaderMeta, Texture, UniformBlockLayout,
+    UniformDesc, UniformType, UserData, VertexAttribute, VertexFormat,
+};
+use realtime_drawing::{GeometryBatch, MiniquadBatch, VertexPos3UvColor};
 use std::f32::consts::PI;
 
-#[path="../rabbit.rs"]
+#[path = "../rabbit.rs"]
 mod rabbit;
-use rabbit::{Rabbit, RabbitMap, linearstep};
+use rabbit::{linearstep, smootherstep, Rabbit, RabbitMap};
 
 struct Example {
     start_time: f64,
@@ -23,7 +27,6 @@ struct Example {
 pub struct ShaderUniforms {
     pub screen_size: [f32; 2],
 }
-
 
 impl Example {
     pub fn new(context: &mut Context) -> Example {
@@ -85,9 +88,7 @@ impl Example {
                 images: vec!["tex".to_owned()],
                 uniforms: UniformBlockLayout {
                     // describes struct ShaderUniforms
-                    uniforms: vec![
-                        UniformDesc::new("screen_size", UniformType::Float2),
-                    ],
+                    uniforms: vec![UniformDesc::new("screen_size", UniformType::Float2)],
                 },
             },
         )
@@ -127,7 +128,10 @@ impl EventHandler for Example {
 
         // update position and velocity of jumping rabbit
         let rabbit_map = &self.rabbit_map;
-        self.rabbit.update(time, dt, &|p| rabbit_map.distance(p), &|p| rabbit_map.normal(p));
+        self.rabbit
+            .update(time, dt, &|p| rabbit_map.distance(p), &|p| {
+                rabbit_map.normal(p)
+            });
 
         self.last_time = time;
     }
@@ -137,7 +141,7 @@ impl EventHandler for Example {
         context.begin_default_pass(PassAction::Clear {
             color: Some((0.2, 0.2, 0.2, 1.0)),
             depth: None,
-            stencil: None
+            stencil: None,
         });
 
         self.batch.begin_frame();
@@ -151,22 +155,18 @@ impl EventHandler for Example {
         self.batch.geometry.pixel_size = 1.0 / view_scale;
 
         // pulsing circles
-        for (index, &(radius, thickness)) in [
-            (48.0, 0.25),
-            (64.0, 0.5),
-            (80.0, 1.0),
-            (96.0, 4.0),
-        ].iter().rev().enumerate() {
+        for (index, &(radius, thickness)) in [(48.0, 0.25), (64.0, 0.5), (80.0, 1.0), (96.0, 4.0)]
+            .iter()
+            .rev()
+            .enumerate()
+        {
             let r = radius * (1.0 + 0.05 * ((time * 0.5 + 0.25 * index as f32).cos()));
             let center = vec2(w * 0.25, h * 0.3);
             let num_segments = ((64.0 * view_scale) as usize).max(32);
             // fill
-            self.batch.geometry.add_circle_aa(
-                center,
-                r,
-                num_segments,
-                [0, 32, 0, 64],
-            );
+            self.batch
+                .geometry
+                .add_circle_aa(center, r, num_segments, [0, 32, 0, 64]);
 
             // dark outline
             self.batch.geometry.add_circle_outline_aa(
@@ -174,7 +174,7 @@ impl EventHandler for Example {
                 r,
                 thickness + 2.0,
                 num_segments,
-                [0, 32, 0, 255]
+                [0, 32, 0, 255],
             );
 
             // circle outline with circular gradient
@@ -188,10 +188,15 @@ impl EventHandler for Example {
                     VertexPos3UvColor {
                         pos: [pos.x, pos.y, 0.0],
                         // circular gradient calculation
-                        color: [64, (160.0 + 32.0 * (t * PI * 6.0).cos()) as u8, 64, (255.0 * alpha) as u8],
+                        color: [
+                            64,
+                            (160.0 + 32.0 * (t * PI * 6.0).cos()) as u8,
+                            64,
+                            (255.0 * alpha) as u8,
+                        ],
                         uv: [0.0, 0.0],
                     }
-                }
+                },
             );
         }
 
@@ -204,9 +209,47 @@ impl EventHandler for Example {
                 let y = t.sin() as f32;
                 points[i] = points[i - 1] + vec2(x, y) * 64.0 / (i as f32);
             }
-            self.batch.geometry.add_polyline_miter_aa(&points, [0, 0, 64, 255], false, thickness as f32 + 2.0);
-            self.batch.geometry.add_polyline_miter_aa(&points, [64, 128, 255, 255], false, thickness as f32);
+            self.batch.geometry.add_polyline_miter_aa(
+                &points,
+                [0, 0, 64, 255],
+                false,
+                thickness as f32 + 2.0,
+            );
+            self.batch.geometry.add_polyline_miter_aa(
+                &points,
+                [64, 128, 255, 255],
+                false,
+                thickness as f32,
+            );
         }
+
+        // tree
+        let tree = Tree {
+            seed: 0xdeadbeef,
+            color: [32, 32, 32, 255],
+            thickness: 4.0,
+            thickness_extra: 4.0,
+            time,
+        };
+        tree.draw_recurse(
+            &mut self.batch.geometry,
+            vec2(w * 0.6, h * 0.7 + 80.0),
+            vec2(0.0, -1.0),
+            1,
+        );
+
+        let tree = Tree{
+            color: [200, 200, 200, 255],
+            thickness_extra: 0.0,
+            ..tree
+        };
+        tree.draw_recurse(
+            &mut self.batch.geometry,
+            vec2(w * 0.6, h * 0.7 + 80.0),
+            vec2(0.0, -1.0),
+            1,
+        );
+
 
         // jumping rabbit
         let camera_offset = vec2(w * 0.5, h * 0.7);
@@ -217,8 +260,8 @@ impl EventHandler for Example {
             camera_offset,
             linearstep(0.45, 0.35, (1.0 - (time / 12.0).fract() * 2.0).abs()),
             &|p| rabbit_map.distance(p),
-            |p| rabbit_map.normal(p)
-            );
+            |p| rabbit_map.normal(p),
+        );
 
         context.apply_pipeline(&self.pipeline);
         context.apply_uniforms(&ShaderUniforms {
@@ -236,14 +279,89 @@ impl EventHandler for Example {
     }
 }
 
+struct Tree {
+    color: [u8; 4],
+    seed: u32,
+    time: f32,
+    thickness: f32,
+    thickness_extra: f32,
+}
+
+impl Tree {
+
+    fn draw_recurse(
+        &self,
+        geometry: &mut GeometryBatch<VertexPos3UvColor>,
+        start: Vec2,
+        dir: Vec2,
+        id: u32,
+    ) {
+        let r = random_hash2(self.seed, id);
+        let rf1 = (r & (1024 - 1)) as f32 / 1024.0;
+        let rf2 = ((r >> 10) & (1024 - 1)) as f32 / 1024.0;
+        let rf3 = ((r >> 20) & (1024 - 1)) as f32 / 1024.0;
+
+        let end = start + dir * (24.0 + rf1 * 8.0) +
+            vec2(
+                (random_noise(id, self.time * 0.3) - 0.5) * 24.0,
+                (random_noise(id + 1, self.time * 0.3 + 0.5) - 0.5) * 8.0);
+
+        geometry.add_polyline_miter_aa(&[start, end], self.color, false, self.thickness + self.thickness_extra);
+
+        let max_depth = (1 << 16);
+        if (id & max_depth) == 0 {
+            let both = (r & 0xff) < 80;
+            if (r & (1 << 16)) != 0 || both {
+                let dir_l = (dir - dir.perp() * (0.3 + rf2 * 0.4)).normalize() * dir.length() * 0.95;
+                self.draw_recurse(geometry, end, dir_l, (id << 1) | 0);
+            } 
+            if (r & (1 << 16)) == 0 || both {
+                let dir_r = (dir + dir.perp() * (0.3 + rf3 * 0.4)).normalize() * dir.length() * 0.95;
+                self.draw_recurse(geometry, end, dir_r, (id << 1) | 1);
+            }
+        }
+    }
+}
+
+
+fn combine_hash(u1: u32, u2: u32)->u32 {
+    ((u1 << 7) | (u1 >> 25)) ^ u2
+}
+
+fn wang_hash(mut key: u32)->u32 {
+    key = key.wrapping_add(!(key << 15));
+    key ^= key >> 10;
+    key = key.wrapping_add(key << 3);
+    key ^= key >> 6;
+    key = key.wrapping_add(!(key << 11));
+    key ^= key >> 16;
+    key
+}        
+
+fn random_hash1(seed: u32)->u32 {
+    wang_hash(seed)
+}     
+
+fn random_hash2(seed: u32, value1: u32)->u32 {
+    combine_hash(wang_hash(seed), wang_hash(value1))
+}
+
+fn random_noise(seed: u32, v: f32)->f32 {
+    let prev = random_hash2(seed, v.floor().to_bits()) as f32 / 0xffffffffu32 as f32;
+    let next = random_hash2(seed, v.ceil().to_bits()) as f32 / 0xffffffffu32 as f32;
+    let t = smootherstep(0.0, 1.0, v.fract());
+    prev * (1.0 - t) + next * t
+}
+
 
 fn main() {
-    miniquad::start(conf::Conf{
-        sample_count: 1,
-        window_width: 1280,
-        window_height: 720,
-        ..Default::default()
-    }, |mut context| {
-        UserData::owning(Example::new(&mut context), context)
-    });
+    miniquad::start(
+        conf::Conf {
+            sample_count: 1,
+            window_width: 1280,
+            window_height: 720,
+            ..Default::default()
+        },
+        |mut context| UserData::owning(Example::new(&mut context), context),
+    );
 }

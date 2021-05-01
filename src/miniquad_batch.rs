@@ -1,15 +1,15 @@
-#[cfg(feature="miniquad")]
+#[cfg(feature = "miniquad")]
 use miniquad;
 type IndexType = u16;
 use crate::{GeometryBatch, GeometryCommand};
-use std::mem::size_of;
 use core::marker::Copy;
-use miniquad::{BufferType, Context, Buffer};
+use miniquad::{Buffer, BufferType, Context};
+use std::mem::size_of;
 
 const NUM_FRAMES: usize = 2;
 const DEFAULT_BATCH_CAPACITY: usize = 65535;
 
-#[cfg(feature="miniquad")]
+#[cfg(feature = "miniquad")]
 struct Draw {
     image: miniquad::Texture,
     first_command: usize,
@@ -54,7 +54,7 @@ struct Draw {
 /// ```
 ///
 /// [`miniquad`]: https://docs.rs/miniquad/
-#[cfg(feature="miniquad")]
+#[cfg(feature = "miniquad")]
 pub struct MiniquadBatch<Vertex: Copy> {
     draws: Vec<Draw>,
     pub geometry: GeometryBatch<Vertex>,
@@ -68,10 +68,10 @@ pub struct MiniquadBatch<Vertex: Copy> {
     temp_bindings: Option<miniquad::Bindings>,
 }
 
-#[cfg(feature="miniquad")]
+#[cfg(feature = "miniquad")]
 impl<Vertex: Copy> MiniquadBatch<Vertex> {
     /// Creates new MiniquadBatch, equivalent of `MiniquadBatch::with_capacity(65535, 65535)`.
-    pub fn new()->Self {
+    pub fn new() -> Self {
         Self::with_capacity(DEFAULT_BATCH_CAPACITY, DEFAULT_BATCH_CAPACITY)
     }
     /// Creates new MiniquadBatch with given capacity.
@@ -123,11 +123,13 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
                 Buffer::immutable(c, BufferType::VertexBuffer, empty_vertices)
             });
 
-            let bindings = self.temp_bindings.get_or_insert_with(|| miniquad::Bindings {
-                vertex_buffers: vec![empty_vb.clone()],
-                index_buffer: empty_ib.clone(),
-                images: Vec::new(),
-            });
+            let bindings = self
+                .temp_bindings
+                .get_or_insert_with(|| miniquad::Bindings {
+                    vertex_buffers: vec![empty_vb.clone()],
+                    index_buffer: empty_ib.clone(),
+                    images: Vec::new(),
+                });
             bindings.images = std::mem::take(&mut self.images);
             bindings
         };
@@ -160,7 +162,12 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
                 bindings.images[0] = *image;
             }
             let clip = clip.unwrap_or(default_clip);
-            c.apply_scissor_rect(clip[0], screen_h - clip[3], clip[2] - clip[0], clip[3] - clip[1]);
+            c.apply_scissor_rect(
+                clip[0],
+                screen_h - clip[3],
+                clip[2] - clip[0],
+                clip[3] - clip[1],
+            );
             let mut dirty_bindings = true;
             for command_index in *first_command..last_command {
                 let command = &self.geometry.commands[command_index];
@@ -168,9 +175,15 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
                     GeometryCommand::Indices { num_indices } => {
                         assert!(num_indices <= self.geometry.max_buffer_indices);
                         let capacity = self.geometry.max_buffer_indices * size_of::<IndexType>();
-                        let buf = self.index_pool[(self.frame + 1) % NUM_FRAMES].pop().unwrap_or_else(|| {
-                            miniquad::Buffer::stream(c, miniquad::BufferType::IndexBuffer, capacity)
-                        });
+                        let buf = self.index_pool[(self.frame + 1) % NUM_FRAMES]
+                            .pop()
+                            .unwrap_or_else(|| {
+                                miniquad::Buffer::stream(
+                                    c,
+                                    miniquad::BufferType::IndexBuffer,
+                                    capacity,
+                                )
+                            });
                         assert!(capacity == buf.size());
                         let indices = &self.geometry.indices[index_pos..index_pos + num_indices];
                         buf.update(c, indices);
@@ -186,10 +199,17 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
                         let buf = self.vertex_pool[(self.frame + 1) % NUM_FRAMES]
                             .pop()
                             .unwrap_or_else(|| {
-                                miniquad::Buffer::stream(c, miniquad::BufferType::VertexBuffer, capacity)
+                                miniquad::Buffer::stream(
+                                    c,
+                                    miniquad::BufferType::VertexBuffer,
+                                    capacity,
+                                )
                             });
                         assert!(capacity == buf.size());
-                        buf.update(c, &self.geometry.vertices[vertex_pos..vertex_pos + num_vertices]);
+                        buf.update(
+                            c,
+                            &self.geometry.vertices[vertex_pos..vertex_pos + num_vertices],
+                        );
                         self.vertex_pool[self.frame].push(buf.clone());
                         vertex_pos += num_vertices;
                         bindings.vertex_buffers[0] = buf;
@@ -240,7 +260,9 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
         };
         let last = self.draws.last();
         let clip = last.map(|l| l.clip).flatten();
-        let last_image = last.map(|l| l.image).unwrap_or_else(|| miniquad::Texture::empty());
+        let last_image = last
+            .map(|l| l.image)
+            .unwrap_or_else(|| miniquad::Texture::empty());
         if last_image != image || self.draws.is_empty() {
             self.draws.push(Draw {
                 image,
@@ -259,7 +281,9 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
         };
         let last = self.draws.last();
         let last_clip = last.map(|d| d.clip).flatten();
-        let image = last.map(|l| l.image).unwrap_or_else(|| miniquad::Texture::empty());
+        let image = last
+            .map(|l| l.image)
+            .unwrap_or_else(|| miniquad::Texture::empty());
         if last_clip != clip || self.draws.is_empty() {
             self.draws.push(Draw {
                 image,
@@ -270,7 +294,7 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
     }
 }
 
-#[cfg(feature="miniquad")]
+#[cfg(feature = "miniquad")]
 impl<Vertex: Copy> Drop for MiniquadBatch<Vertex> {
     fn drop(&mut self) {
         for pool in &mut self.vertex_pool {
