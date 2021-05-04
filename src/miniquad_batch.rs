@@ -109,7 +109,7 @@ impl<Vertex: Copy> MiniquadBatch<Vertex> {
 
     /// Performs actual rendering.
     ///
-    /// Does not clear buffer buffers, can be called multiple times to render exactly the same geometry.
+    /// Does not clear geometry buffers, can be called multiple times to render exactly the same geometry.
     pub fn draw(&mut self, c: &mut Context) {
         self.geometry.finish_commands();
 
