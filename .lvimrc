@@ -1,0 +1,5 @@
+let s:path = expand('<sfile>:p:h')
+let &makeprg=s:path.'/build.sh'
+execute "nmap <F5> :AsyncRun -cwd=".s:path."/ cargo run --example demo<CR>"
+execute "nmap <S-F5> :AsyncStop<CR>"
+execute "nmap <C-F5> :Termdebug ".s:path."/target/debug/roper<CR>"
