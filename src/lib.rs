@@ -416,8 +416,25 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
             },
         )
     }
+    
+    /// Draws an antialiased line from `start` to `finish` of `thickness`.
+    ///
+    /// The line is drawn without caps. Caps are not antialiased.
+    pub fn add_line_aa(
+        &mut self,
+        start: Vec2,
+        end: Vec2,
+        color: [u8; 4],
+        thickness: f32,
+    ) {
+        self.add_polyline_miter_aa(&[start, end], color, false, thickness);
+    }
 
-    // Coordinates are assumed to be pixel.
+    /// Draws connected sequence of antialised line segments passing through `points`.
+    ///
+    /// When `closed` is set the last and first points are connected as well.
+    ///
+    /// The line is drawn without caps. Caps are not antialiased.
     pub fn add_polyline_aa(
         &mut self,
         points: &[Vec2],

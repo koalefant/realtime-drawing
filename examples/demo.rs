@@ -10,7 +10,7 @@ use std::f32::consts::PI;
 
 #[path = "../rabbit.rs"]
 mod rabbit;
-use rabbit::{linearstep, smootherstep, Rabbit, RabbitMap};
+use rabbit::{linearstep, Rabbit, RabbitMap};
 
 struct Example {
     start_time: f64,
@@ -161,7 +161,7 @@ impl EventHandler for Example {
             .enumerate()
         {
             let r = radius * (1.0 + 0.05 * ((time * 0.5 + 0.25 * index as f32).cos()));
-            let center = vec2(w * 0.25, h * 0.3);
+            let center = vec2(w * 0.25, h * 0.3).floor();
             let num_segments = ((64.0 * view_scale) as usize).max(32);
             // fill
             self.batch
@@ -200,57 +200,41 @@ impl EventHandler for Example {
             );
         }
 
-        // clock-like lines
-        for (index, &thickness) in [0.5, 1.0, 2.0, 4.0].iter().enumerate() {
-            let mut points = [vec2(w * 0.75, h * 0.3); 4];
-            for i in 1..points.len() {
-                let t = (time + index as f32 * 0.5 * PI) * 1.41_f32.powf(i as f32);
-                let x = t.cos() as f32;
-                let y = t.sin() as f32;
-                points[i] = points[i - 1] + vec2(x, y) * 64.0 / (i as f32);
+        // lines
+        {
+            let thickness_list = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0];
+            for (i, &thickness) in thickness_list.iter().enumerate() {
+                let offset = vec2(w * 0.5, h * 0.2 + i as f32 * 15.0).floor();
+                self.batch.geometry.add_line_aa(
+                    offset + vec2(-50.0, 10.0),
+                    offset + vec2(50.0, -10.0),
+                    [255, 255, 255, 255],
+                    thickness);
             }
-            self.batch.geometry.add_polyline_miter_aa(
-                &points,
-                [0, 0, 64, 255],
-                false,
-                thickness as f32 + 2.0,
-            );
-            self.batch.geometry.add_polyline_miter_aa(
-                &points,
-                [64, 128, 255, 255],
-                false,
-                thickness as f32,
-            );
         }
 
-        // tree
-        let tree = Tree {
-            seed: 0xbeef31bc,
-            color: [32, 32, 32, 255],
-            thickness: 12.0,
-            thickness_extra: 4.0,
-            time,
-        };
-        tree.draw_recurse(
-            &mut self.batch.geometry,
-            vec2(w * 0.6, h * 0.7 + 80.0),
-            vec2(0.0, -1.0),
-            1,
-            0,
-        );
-
-        let tree = Tree{
-            color: [200, 200, 200, 255],
-            thickness_extra: 0.0,
-            ..tree
-        };
-        tree.draw_recurse(
-            &mut self.batch.geometry,
-            vec2(w * 0.6, h * 0.7 + 80.0),
-            vec2(0.0, -1.0),
-            1,
-            0,
-        );
+        // polylines
+        {
+            let points = [
+                vec2(0.0, 0.0), vec2(48.0, 0.0), vec2(48.0, 4.0), vec2(24.176, 9.916),
+                vec2(20.0, 3.029), vec2(15.824, 9.916), vec2(8.0, 8.0), vec2(9.916, 15.824),
+                vec2(3.029, 20.0), vec2(9.916, 24.176), vec2(8.0, 32.0), vec2(12.0, 40.0),
+                vec2(36.0, 40.0), vec2(20.0, 24.0), vec2(24.0, 20.0), vec2(48.0, 44.0),
+                vec2(48.0, 48.0), vec2(8.0, 48.0), vec2(0.0, 40.0), 
+            ];
+            let thickness_list = [1.0, 4.0];
+            for (i, &thickness) in thickness_list.iter().enumerate() {
+                let offset = vec2(w * 0.75, h * 0.2 + i as f32 * 128.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
+                self.batch.geometry.add_polyline_miter_aa(
+                    &points
+                    .iter()
+                    .map(|p| *p * 2.0 + offset)
+                    .collect::<Vec<_>>(),
+                    [255, 255, 255, 255],
+                    true,
+                    thickness);
+            }
+        }
 
 
         // jumping rabbit
@@ -279,79 +263,6 @@ impl EventHandler for Example {
     fn resize_event(&mut self, _context: &mut Context, width: f32, height: f32) {
         self.window_size = [width, height];
     }
-}
-
-struct Tree {
-    color: [u8; 4],
-    seed: u32,
-    time: f32,
-    thickness: f32,
-    thickness_extra: f32,
-}
-
-impl Tree {
-
-    fn draw_recurse(
-        &self,
-        geometry: &mut GeometryBatch<VertexPos3UvColor>,
-        start: Vec2,
-        dir: Vec2,
-        id: u32,
-        depth: i32,
-    ) {
-        let r = random_hash2(self.seed, id);
-        let rf1 = (r & (1024 - 1)) as f32 / 1024.0;
-
-        let rf2 = random_noise(id, self.time * 0.3);
-        let rf3 = random_noise(id + 17, self.time * 0.3);
-
-        let end = start + dir * (60.0 / (1.0 + depth as f32 * 0.2) as f32 + rf1 * 8.0);
-
-        let thickness = self.thickness / (1.0 + depth as f32 * 0.3) + self.thickness_extra;
-        geometry.add_polyline_miter_aa(&[start, end], self.color, false, thickness);
-
-        if depth < 16 {
-            let both = (r & 0xff) < 70;
-            if (r & (1 << 16)) != 0 || both {
-                let dir_l = (dir - dir.perp() * (0.2 + rf2 * 0.2)).normalize();
-                self.draw_recurse(geometry, end, dir_l, id, depth + 1);
-            } 
-            if (r & (1 << 16)) == 0 || both {
-                let dir_r = (dir + dir.perp() * (0.2 + rf3 * 0.2)).normalize();
-                self.draw_recurse(geometry, end, dir_r, id | (1 << depth), depth + 1);
-            }
-        }
-    }
-}
-
-
-fn combine_hash(u1: u32, u2: u32)->u32 {
-    ((u1 << 7) | (u1 >> 25)) ^ u2
-}
-
-fn wang_hash(mut key: u32)->u32 {
-    key = key.wrapping_add(!(key << 15));
-    key ^= key >> 10;
-    key = key.wrapping_add(key << 3);
-    key ^= key >> 6;
-    key = key.wrapping_add(!(key << 11));
-    key ^= key >> 16;
-    key
-}        
-
-fn random_hash1(seed: u32)->u32 {
-    wang_hash(seed)
-}     
-
-fn random_hash2(seed: u32, value1: u32)->u32 {
-    combine_hash(wang_hash(seed), wang_hash(value1))
-}
-
-fn random_noise(seed: u32, v: f32)->f32 {
-    let prev = random_hash2(seed, v.floor().to_bits()) as f32 / 0xffffffffu32 as f32;
-    let next = random_hash2(seed, v.ceil().to_bits()) as f32 / 0xffffffffu32 as f32;
-    let t = smootherstep(0.0, 1.0, v.fract());
-    prev * (1.0 - t) + next * t
 }
 
 

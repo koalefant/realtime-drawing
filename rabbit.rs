@@ -690,7 +690,7 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let x = ((x - edge0) / (edge1 - edge0)).max(0.0).min(1.0);
     x * x * (3.0 - 2.0 * x)
 }
-pub fn smootherstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+fn smootherstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     // by Ken Perlin
     let x = ((x - edge0) / (edge1 - edge0)).max(0.0).min(1.0);
     x * x * x * (x * (x * 6.0 - 15.0) + 10.0)
@@ -749,7 +749,7 @@ impl RabbitMap {
                 (vec2(0.0, 90.0), vec2(500.0, 10.0)),
                 (vec2(-500.0, 50.0), vec2(10.0, 50.0)),
                 (vec2(500.0, 50.0), vec2(10.0, 50.0)),
-                (vec2(40.0, 75.0), vec2(15.0, 15.0)),
+                (vec2(40.0, 80.0), vec2(15.0, 15.0)),
             ],
         }
     }
