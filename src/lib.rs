@@ -26,6 +26,7 @@ use core::iter::Iterator;
 use core::marker::Copy;
 use glam::vec2;
 use glam::Vec2;
+use std::f32::consts::PI;
 
 type IndexType = u16;
 
@@ -277,18 +278,11 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
-    /// Adds outline of circle positioned at `center` with `radius` and `thickness`.
+    /// Adds an antialiased outline of a circle positioned at `center` with `radius` and `thickness`.
     ///
     /// The circle is constructed out of `num_segments`-linear segments.
     ///
-    /// Supplied closure can be used to:
-    /// - Construct vertex in user-defined format.
-    /// - Parametrize vertex based on position on circle.
-    /// - Manipulate vertex position.
-    ///
     /// Closure arguments are `(pos, alpha, u)` where u is normalized polar coordinate on a circle.
-    ///
-    /// `_aa` suffix signifies presence of local-antialiasing.
     #[inline]
     pub fn add_circle_outline_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
@@ -389,9 +383,55 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
             }
         }
     }
+    
+    /// Adds an outline of circle positioned at `center` with `radius` and `thickness`.
+    ///
+    /// The circle is constructed out of `num_segments`-linear segments.
+    ///
+    /// Closure arguments are `(pos, uv)` where `u` is a normalized angular coordinate on the circle
+    /// and `v` has value of 0.0 on the inner edge and 1.0 on the outer edge.
+    #[inline]
+    pub fn add_circle_outline_with<ToVertex: FnMut(Vec2, Vec2) -> Vertex>(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        thickness: f32,
+        num_segments: usize,
+        mut to_vertex: ToVertex,
+    ) {
+        let (vs, is, first) =
+            self.allocate(2 * num_segments, num_segments * 6, Vertex::default());
+        let half_thickness = thickness * 0.5;
+        for (i, pair) in vs.chunks_mut(2).enumerate() {
+            let t = i as f32 / num_segments as f32;
+            let angle = t * 2.0 * PI;
+            let cos = angle.cos();
+            let sin = angle.sin();
+
+            let inner_radius = radius - half_thickness;
+            let outer_radius = radius + half_thickness;
+            pair[0] = to_vertex(vec2(center.x + cos * inner_radius, center.y + sin * inner_radius), vec2(t, 0.0));
+            pair[1] = to_vertex(vec2(center.x + cos * outer_radius, center.y + sin * outer_radius), vec2(t, 1.0));
+        }
+        for (section_i, section) in is.chunks_mut(6).enumerate() {
+            let section_i2 = first + section_i as IndexType * 2;
+            let section_n = (section_i + 1) % num_segments;
+            let section_n2 = first + section_n as IndexType * 2;
+            section[0] = section_i2 + 0;
+            section[1] = section_i2 + 1;
+            section[2] = section_n2 + 1;
+            section[3] = section_i2 + 0;
+            section[4] = section_n2 + 0;
+            section[5] = section_n2 + 1;
+        }
+    }
 }
 
 impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
+    /// Adds an antialiased outline of a circle positioned at `center` with `radius`, `thickness`
+    /// and `color`.
+    ///
+    /// The circle is constructed out of `num_segments`-linear segments.
     #[inline]
     pub fn add_circle_outline_aa(
         &mut self,
@@ -416,8 +456,35 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
             },
         )
     }
+
+    /// Adds an outline of circle positioned at `center` with `radius`, `thickness` and `color`.
+    ///
+    /// The circle is constructed out of `num_segments`-linear segments.
+    #[inline]
+    pub fn add_circle_outline (
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        thickness: f32,
+        num_segments: usize,
+        color: [u8; 4],
+    ) {
+        let mut def = Vertex::default();
+        def.set_color(color);
+        self.add_circle_outline_with(
+            center,
+            radius,
+            thickness,
+            num_segments,
+            |pos, _| {
+                let mut v = def;
+                v.set_pos(pos.into());
+                v
+            },
+        )
+    }
     
-    /// Draws an antialiased line from `start` to `finish` of `thickness`.
+    /// Draws an antialiased line from `start` to `finish` of `thickness` and `color`.
     ///
     /// The line is drawn without caps. Caps are not antialiased.
     pub fn add_line_aa(
@@ -427,15 +494,23 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         color: [u8; 4],
         thickness: f32,
     ) {
-        self.add_polyline_miter_aa(&[start, end], color, false, thickness);
+        self.add_polyline_aa(&[start, end], color, false, thickness);
     }
-
-    /// Draws connected sequence of antialised line segments passing through `points`.
-    ///
-    /// When `closed` is set the last and first points are connected as well.
+    
+    /// Draws a line from `start` to `finish` of `thickness` and `color`.
     ///
     /// The line is drawn without caps. Caps are not antialiased.
-    pub fn add_polyline_aa(
+    pub fn add_line(
+        &mut self,
+        start: Vec2,
+        end: Vec2,
+        color: [u8; 4],
+        thickness: f32,
+    ) {
+        self.add_polyline(&[start, end], color, false, thickness);
+    }
+
+    fn add_polyline_internal<const ANTIALIAS: bool>(
         &mut self,
         points: &[Vec2],
         color: [u8; 4],
@@ -443,207 +518,6 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         thickness: f32,
     ) {
         // based on AddPoyline from Dear ImGui by Omar Cornut (MIT)
-        if points.len() < 2 {
-            return;
-        }
-        let count = match closed {
-            true => points.len(),
-            false => points.len() - 1,
-        };
-        let thick_line = thickness > self.pixel_size;
-
-        let gradient_size = self.pixel_size;
-        let color_transparent = [color[0], color[1], color[2], 0];
-        let index_count = if thick_line { count * 18 } else { count * 12 };
-        let vertex_count = if thick_line {
-            points.len() * 4
-        } else {
-            points.len() * 3
-        };
-        let (vs, is, first) = self.allocate(vertex_count, index_count, Vertex::default());
-        let mut temp_normals = Vec::new();
-        let mut temp_points = Vec::new();
-        temp_normals.resize(points.len(), vec2(0., 0.));
-        temp_points.resize(points.len() * if thick_line { 4 } else { 2 }, vec2(0., 0.));
-        for i1 in 0..count {
-            let i2 = if (i1 + 1) == points.len() { 0 } else { i1 + 1 };
-            let mut delta = points[i2] - points[i1];
-            let len2 = delta.dot(delta);
-            if len2 > 0.0 {
-                let len = len2.sqrt();
-                delta /= len;
-            }
-            temp_normals[i1] = vec2(delta.y, -delta.x);
-        }
-        if !closed {
-            temp_normals[points.len() - 1] = temp_normals[points.len() - 2];
-        }
-        if !thick_line {
-            if !closed {
-                temp_points[0] = points[0] + temp_normals[0] * gradient_size;
-                temp_points[1] = points[1] - temp_normals[1] * gradient_size;
-
-                temp_points[(points.len() - 1) * 2 + 0] =
-                    points[points.len() - 1] + temp_normals[points.len() - 1] * gradient_size;
-                temp_points[(points.len() - 1) * 2 + 1] =
-                    points[points.len() - 1] - temp_normals[points.len() - 1] * gradient_size;
-            }
-
-            let mut idx1 = first;
-            for i1 in 0..count {
-                let i2 = if (i1 + 1) == points.len() { 0 } else { i1 + 1 };
-                let idx2 = if (i1 + 1) == points.len() {
-                    first
-                } else {
-                    idx1 + 3
-                };
-
-                let mut dm = (temp_normals[i1] + temp_normals[i2]) * 0.5;
-                // average normals
-                let mut dm_len2 = dm.dot(dm);
-                if dm_len2 < 0.5 {
-                    dm_len2 = 0.5;
-                }
-                let inv_len2 = gradient_size / dm_len2;
-                dm *= inv_len2;
-
-                // compute points
-                temp_points[i2 * 2 + 0] = points[i2] + dm;
-                temp_points[i2 * 2 + 1] = points[i2] - dm;
-
-                // indices
-                is[i1 * 12..(i1 + 1) * 12].copy_from_slice(&[
-                    idx2 + 0,
-                    idx1 + 0,
-                    idx1 + 2,
-                    idx1 + 2,
-                    idx2 + 2,
-                    idx2 + 0,
-                    idx2 + 1,
-                    idx1 + 1,
-                    idx1 + 0,
-                    idx1 + 0,
-                    idx2 + 0,
-                    idx2 + 1,
-                ]);
-
-                idx1 = idx2;
-            }
-
-            for i in 0..points.len() {
-                vs[i * 3 + 0].set_pos(points[i].into());
-                vs[i * 3 + 0].set_color(color);
-                vs[i * 3 + 1].set_pos(temp_points[i * 2 + 0].into());
-                vs[i * 3 + 1].set_color(color_transparent);
-                vs[i * 3 + 2].set_pos(temp_points[i * 2 + 1].into());
-                vs[i * 3 + 2].set_color(color_transparent);
-            }
-        } else {
-            let half_inner_thickness = (thickness - gradient_size) * 0.5;
-            if !closed {
-                temp_points[0] =
-                    points[0] + temp_normals[0] * (half_inner_thickness + gradient_size);
-                temp_points[1] = points[0] + temp_normals[0] * half_inner_thickness;
-                temp_points[2] = points[0] - temp_normals[0] * half_inner_thickness;
-                temp_points[3] =
-                    points[0] - temp_normals[0] * (half_inner_thickness + gradient_size);
-
-                temp_points[(points.len() - 1) * 4 + 0] = points[points.len() - 1]
-                    + temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
-                temp_points[(points.len() - 1) * 4 + 1] = points[points.len() - 1]
-                    + temp_normals[points.len() - 1] * (half_inner_thickness);
-                temp_points[(points.len() - 1) * 4 + 2] = points[points.len() - 1]
-                    - temp_normals[points.len() - 1] * (half_inner_thickness);
-                temp_points[(points.len() - 1) * 4 + 3] = points[points.len() - 1]
-                    - temp_normals[points.len() - 1] * (half_inner_thickness + gradient_size);
-            }
-
-            let mut idx1 = first;
-            for i1 in 0..count {
-                let i2 = if (i1 + 1) == points.len() { 0 } else { i1 + 1 };
-                let idx2 = if (i1 + 1) == points.len() {
-                    first
-                } else {
-                    idx1 + 4
-                };
-
-                let mut dm = temp_normals[i1] + temp_normals[i2] * 0.5;
-
-                // direction of first edge
-                let v0 = vec2(-temp_normals[i1].y, temp_normals[i1].x);
-
-                // project direction of first edge on second edge normal
-                if closed || i2 != count {
-                    let dot = v0.dot(temp_normals[i2]);
-                    // Negative direction of 2nd edge
-                    let v1 = vec2(temp_normals[i2].y, -temp_normals[i2].x);
-                    // Scale
-                    dm = (v0 + v1) / dot;
-                } else {
-                    let mut dm_len2 = dm.dot(dm);
-                    if dm_len2 < 0.5 {
-                        dm_len2 = 0.5;
-                    }
-                    let inv_len2 = 1.0 / dm_len2;
-                    dm *= inv_len2;
-                }
-
-                let dm_out = dm * (half_inner_thickness + gradient_size);
-                let dm_in = dm * half_inner_thickness;
-
-                // points
-                temp_points[i2 * 4 + 0] = points[i2] + dm_out;
-                temp_points[i2 * 4 + 1] = points[i2] + dm_in;
-                temp_points[i2 * 4 + 2] = points[i2] - dm_in;
-                temp_points[i2 * 4 + 3] = points[i2] - dm_out;
-
-                // indices
-                is[18 * i1..18 * (i1 + 1)].copy_from_slice(&[
-                    idx2 + 1,
-                    idx1 + 1,
-                    idx1 + 2,
-                    idx1 + 2,
-                    idx2 + 2,
-                    idx2 + 1,
-                    idx2 + 1,
-                    idx1 + 1,
-                    idx1 + 0,
-                    idx1 + 0,
-                    idx2 + 0,
-                    idx2 + 1,
-                    idx2 + 2,
-                    idx1 + 2,
-                    idx1 + 3,
-                    idx1 + 3,
-                    idx2 + 3,
-                    idx2 + 2,
-                ]);
-                idx1 = idx2;
-            }
-
-            for i in 0..points.len() {
-                vs[i * 4 + 0].set_pos(temp_points[i * 4 + 0].into());
-                vs[i * 4 + 0].set_color(color_transparent);
-
-                vs[i * 4 + 1].set_pos(temp_points[i * 4 + 1].into());
-                vs[i * 4 + 1].set_color(color);
-
-                vs[i * 4 + 2].set_pos(temp_points[i * 4 + 2].into());
-                vs[i * 4 + 2].set_color(color);
-
-                vs[i * 4 + 3].set_pos(temp_points[i * 4 + 3].into());
-                vs[i * 4 + 3].set_color(color_transparent);
-            }
-        }
-    }
-
-    pub fn add_polyline_miter_aa(
-        &mut self,
-        points: &[Vec2],
-        color: [u8; 4],
-        closed: bool,
-        thickness: f32,
-    ) {
         let points_count = points.len();
         if points_count < 2 {
             return;
@@ -661,7 +535,6 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         let mut v = Vertex::default();
         v.set_color(color);
 
-        const ANTIALIAS: bool = true;
         if ANTIALIAS && thickness <= pixel_size {
             // Anti-aliased stroke approximation
             let idx_count = count * 12;
@@ -990,6 +863,36 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
             }
             self.reclaim_allocation(unused_vertices, unused_indices);
         }
+    }
+
+    /// Draws a connected sequence of antialised line segments passing through `points`.
+    ///
+    /// When `closed` is set the last and first points are connected as well.
+    ///
+    /// The line is drawn without caps. Caps are not antialiased.
+    pub fn add_polyline_aa(
+        &mut self,
+        points: &[Vec2],
+        color: [u8; 4],
+        closed: bool,
+        thickness: f32,
+    ) {
+        self.add_polyline_internal::<true>(points, color, closed, thickness)
+    }
+
+    /// Draws a connected sequence of line segments passing through `points`.
+    ///
+    /// When `closed` is set the last and first points are connected as well.
+    ///
+    /// The line is drawn without any caps.
+    pub fn add_polyline(
+        &mut self,
+        points: &[Vec2],
+        color: [u8; 4],
+        closed: bool,
+        thickness: f32,
+    ) {
+        self.add_polyline_internal::<false>(points, color, closed, thickness)
     }
 
     pub fn add_polyline_variable_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
