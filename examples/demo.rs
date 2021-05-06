@@ -6,7 +6,6 @@ use miniquad::{
     UniformDesc, UniformType, UserData, VertexAttribute, VertexFormat,
 };
 use realtime_drawing::{MiniquadBatch, VertexPos3UvColor};
-use std::f32::consts::PI;
 
 #[path = "../rabbit.rs"]
 mod rabbit;
@@ -43,33 +42,55 @@ impl EventHandler for Example {
         let view_scale = self.window_size[0] / w;
         self.batch.geometry.pixel_size = 1.0 / view_scale;
        
+        // circles
         {
-            let center = vec2(w * 0.20, h * 0.3).floor();
+            let center = vec2(w * 0.15, h * 0.5).floor();
+            let center_aa = vec2(w * 0.15, h * 0.2).floor();
             let num_segments = ((64.0 * view_scale) as usize).max(32);
 
             // fill
+            //self.batch
+            //    .geometry
+            //    .add_circle(center, 32.0, num_segments, [255, 255, 255, 255]);
+
             self.batch
                 .geometry
-                .add_circle_aa(center, 32.0, num_segments, [255, 255, 255, 255]);
+                .add_circle_aa(center_aa, 32.0, num_segments, [255, 255, 255, 255]);
 
-            // circles
+            // multiple outlines
             for &(r, thickness) in [(48.0, 2.0), (64.0, 1.0), (80.0, 0.5), (96.0, 0.25)].iter().rev() {
-                self.batch.geometry.add_circle_outline_aa(
+                self.batch.geometry.add_circle_outline(
                     center,
                     r,
                     thickness,
                     num_segments,
                     [255, 255, 255, 255]
                 );
+
+                self.batch.geometry.add_circle_outline_aa(
+                    center_aa,
+                    r,
+                    thickness,
+                    num_segments,
+                    [255, 255, 255, 255]
+                );
             }
+
         }
 
         // lines
         {
             let thickness_list = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0];
             for (i, &thickness) in thickness_list.iter().enumerate() {
-                let offset = vec2(w * 0.5, h * 0.2 + i as f32 * 15.0).floor();
+                let offset = vec2(w * 0.35, h * 0.2 + (i as f32 - 5.0) * 15.0).floor();
                 self.batch.geometry.add_line_aa(
+                    offset + vec2(-50.0, 10.0),
+                    offset + vec2(50.0, -10.0),
+                    [255, 255, 255, 255],
+                    thickness);
+
+                let offset = vec2(w * 0.35, h * 0.5 + (i as f32 - 5.0) * 15.0).floor();
+                self.batch.geometry.add_line(
                     offset + vec2(-50.0, 10.0),
                     offset + vec2(50.0, -10.0),
                     [255, 255, 255, 255],
@@ -88,8 +109,18 @@ impl EventHandler for Example {
             ];
             let thickness_list = [1.0, 4.0];
             for (i, &thickness) in thickness_list.iter().enumerate() {
-                let offset = vec2(w * 0.75, h * 0.2 + i as f32 * 128.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
-                self.batch.geometry.add_polyline_miter_aa(
+                let offset = vec2(w * 0.5 + (i as f32 - 0.5) * 112.0, h * 0.2 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
+                self.batch.geometry.add_polyline_aa(
+                    &points
+                    .iter()
+                    .map(|p| *p * 2.0 + offset)
+                    .collect::<Vec<_>>(),
+                    [255, 255, 255, 255],
+                    true,
+                    thickness);
+
+                let offset = vec2(w * 0.5 + (i as f32 - 0.5) * 112.0, h * 0.5 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
+                self.batch.geometry.add_polyline(
                     &points
                     .iter()
                     .map(|p| *p * 2.0 + offset)
@@ -246,7 +277,7 @@ pub struct ShaderUniforms {
 fn main() {
     miniquad::start(
         conf::Conf {
-            sample_count: 1,
+            sample_count: 4,
             window_width: 1280,
             window_height: 720,
             ..Default::default()
