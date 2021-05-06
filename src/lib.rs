@@ -6,7 +6,7 @@
 //! - GPU rendering: output to streamed vertex/index buffers.
 //! - Aggressive batching across primitive types.
 //! - Backend-agnostic. Comes with [`MiniquadBatch`] that implements [`miniquad`]-backend out of the box. Easy integration into existing engines.
-//! - Works with custom vertex format through traits. See [`VertexPos2`], [`VertexPos3`], [`VertexColor`] etc.
+//! - Works with custom vertex format through traits. See [`FromPos2`], [`FromPos3Color`] etc.
 //! - Can be used with 16-bit indices (to reduce memory bandwidth) and update multiple buffers when reaching 65K vertex/index limits.
 //! - Easy to extend with custom traits.
 //! - WebAssembly support.
@@ -254,7 +254,7 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
+impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     /// Adds filled circle positioned at `center` with `radius` and `thickness`.
     ///
     /// Circle outer edge is constructed out of `num_segments`-linear segments.
@@ -266,13 +266,8 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         num_segments: usize,
         color: [u8; 4],
     ) {
-        let mut def = Vertex::default();
-        def.set_color(color);
         self.add_circle_fill_aa_with(center, radius, num_segments, move |pos, alpha, _| {
-            let mut v = def;
-            v.set_pos(pos.into());
-            v.set_alpha((color[3] as f32 * alpha) as u8);
-            v
+            Vertex::from_pos2_color(pos.into(), [color[0], color[1], color[2], (color[3] as f32 * alpha) as u8])
         })
     }
 }
@@ -427,7 +422,7 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
+impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     /// Adds an antialiased outline of a circle positioned at `center` with `radius`, `thickness`
     /// and `color`.
     ///
@@ -441,18 +436,13 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         num_segments: usize,
         color: [u8; 4],
     ) {
-        let mut def = Vertex::default();
-        def.set_color(color);
         self.add_circle_outline_aa_with(
             center,
             radius,
             thickness,
             num_segments,
             |pos, alpha, _u| {
-                let mut v = def;
-                v.set_pos(pos.into());
-                v.set_alpha((255.0 * alpha) as u8);
-                v
+                Vertex::from_pos2_color(pos.into(), [color[0], color[1], color[2], (255.0 * alpha) as u8])
             },
         )
     }
@@ -469,18 +459,12 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         num_segments: usize,
         color: [u8; 4],
     ) {
-        let mut def = Vertex::default();
-        def.set_color(color);
         self.add_circle_outline_with(
             center,
             radius,
             thickness,
             num_segments,
-            |pos, _| {
-                let mut v = def;
-                v.set_pos(pos.into());
-                v
-            },
+            |pos, _| Vertex::from_pos2_color(pos.into(), color)
         )
     }
     
@@ -532,14 +516,11 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         let pixel_size = self.pixel_size;
         let col_trans = [color[0], color[1], color[2], 0];
 
-        let mut v = Vertex::default();
-        v.set_color(color);
-
         if ANTIALIAS && thickness <= pixel_size {
             // Anti-aliased stroke approximation
             let idx_count = count * 12;
             let vtx_count = count * 6;
-            let (vs, is, first_index) = self.allocate(vtx_count, idx_count, v);
+            let (vs, is, first_index) = self.allocate(vtx_count, idx_count, Vertex::default());
             let mut col_faded = color;
             col_faded[3] = (color[3] as f32 * thickness) as u8;
 
@@ -558,18 +539,12 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
                 }
 
                 let current_vertex = i1 * 6;
-                vs[current_vertex + 0].set_pos([p1.x + dy, p1.y - dx]);
-                vs[current_vertex + 0].set_color(col_trans);
-                vs[current_vertex + 1].set_pos([p1.x, p1.y]);
-                vs[current_vertex + 1].set_color(col_faded);
-                vs[current_vertex + 2].set_pos([p1.x - dy, p1.y + dx]);
-                vs[current_vertex + 2].set_color(col_trans);
-                vs[current_vertex + 3].set_pos([p2.x + dy, p2.y - dx]);
-                vs[current_vertex + 3].set_color(col_trans);
-                vs[current_vertex + 4].set_pos([p2.x, p2.y]);
-                vs[current_vertex + 4].set_color(col_faded);
-                vs[current_vertex + 5].set_pos([p2.x - dy, p2.y + dx]);
-                vs[current_vertex + 5].set_color(col_trans);
+                vs[current_vertex + 0] = Vertex::from_pos2_color([p1.x + dy, p1.y - dx], col_trans);
+                vs[current_vertex + 1] = Vertex::from_pos2_color([p1.x,           p1.y], col_faded);
+                vs[current_vertex + 2] = Vertex::from_pos2_color([p1.x - dy, p1.y + dx], col_trans);
+                vs[current_vertex + 3] = Vertex::from_pos2_color([p2.x + dy, p2.y - dx], col_trans);
+                vs[current_vertex + 4] = Vertex::from_pos2_color([p2.x,      p2.y     ], col_faded);
+                vs[current_vertex + 5] = Vertex::from_pos2_color([p2.x - dy, p2.y + dx], col_trans);
 
                 let current_vertex = first_index + current_vertex as u16;
                 let current_index = i1 * 12;
@@ -592,7 +567,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
             let max_n_idx = 3 * if ANTIALIAS { 9 } else { 3 };
             let vtx_count = points_count * max_n_vtx;
             let idx_count = count * max_n_idx;
-            let (mut vs, mut is, first) = self.allocate(vtx_count, idx_count, v);
+            let (mut vs, mut is, first) = self.allocate(vtx_count, idx_count, Vertex::default());
 
             let half_thickness = if ANTIALIAS {
                 thickness - pixel_size
@@ -763,33 +738,30 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
                 let bevel_l = bevel && miter_sign < 0.0;
                 let bevel_r = bevel && miter_sign > 0.0;
 
-                vs[0].set_pos([
+                vs[0] = Vertex::from_pos2_color([
                     if bevel_l { b1x } else { mlx },
                     if bevel_l { b1y } else { mly },
-                ]);
-                vs[1].set_pos([
+                ], color);
+                vs[1] = Vertex::from_pos2_color([
                     if bevel_r { b1x } else { mrx },
                     if bevel_r { b1y } else { mry },
-                ]);
+                ], color);
 
                 if bevel {
-                    vs[bi].set_pos([b2x, b2y]);
+                    vs[bi] = Vertex::from_pos2_color([b2x, b2y], color);
                 }
 
                 if ANTIALIAS {
-                    vs[2].set_pos([
+                    vs[2] = Vertex::from_pos2_color([
                         if bevel_l { b1ax } else { mlax },
                         if bevel_l { b1ay } else { mlay },
-                    ]);
-                    vs[2].set_color(col_trans);
-                    vs[3].set_pos([
+                    ], col_trans);
+                    vs[3] = Vertex::from_pos2_color([
                         if bevel_r { b1ax } else { mrax },
                         if bevel_r { b1ay } else { mray },
-                    ]);
-                    vs[3].set_color(col_trans);
+                    ], col_trans);
                     if bevel {
-                        vs[5].set_pos([b2ax, b2ay]);
-                        vs[5].set_color(col_trans);
+                        vs[5] = Vertex::from_pos2_color([b2ax, b2ay], col_trans);
                     }
                 }
                 unused_vertices += max_n_vtx - vertex_count;
@@ -902,16 +874,13 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         assert!(points.len() == radius.len());
         let count = points.len() - 1;
 
-        let mut def = Vertex::default();
-        def.set_color(color);
-
         let gradient_size = self.pixel_size;
         let half_gradient = gradient_size * 0.5;
         let alpha_transparent = 0;
-        let alpha_opaque = def.alpha();
+        let color_transparent = [color[0], color[1], color[2], alpha_transparent];
         let index_count = count * 18;
         let vertex_count = points.len() * 4;
-        let (vs, is, first) = self.allocate(vertex_count, index_count, def);
+        let (vs, is, first) = self.allocate(vertex_count, index_count, Vertex::default());
         let mut temp_normals = Vec::new();
         let mut temp_points = Vec::new();
         temp_normals.resize(points.len(), vec2(0., 0.));
@@ -994,17 +963,10 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         }
 
         for i in 0..points.len() {
-            vs[i * 4 + 0].set_pos(temp_points[i * 4 + 0].into());
-            vs[i * 4 + 0].set_alpha(alpha_transparent);
-
-            vs[i * 4 + 1].set_pos(temp_points[i * 4 + 1].into());
-            vs[i * 4 + 1].set_alpha(alpha_opaque);
-
-            vs[i * 4 + 2].set_pos(temp_points[i * 4 + 2].into());
-            vs[i * 4 + 2].set_alpha(alpha_opaque);
-
-            vs[i * 4 + 3].set_pos(temp_points[i * 4 + 3].into());
-            vs[i * 4 + 3].set_alpha(alpha_transparent);
+            vs[i * 4 + 0] = Vertex::from_pos2_color(temp_points[i * 4 + 0].into(), color_transparent);
+            vs[i * 4 + 1] = Vertex::from_pos2_color(temp_points[i * 4 + 1].into(), color);
+            vs[i * 4 + 2] = Vertex::from_pos2_color(temp_points[i * 4 + 2].into(), color);
+            vs[i * 4 + 3] = Vertex::from_pos2_color(temp_points[i * 4 + 3].into(), color_transparent);
         }
     }
 
@@ -1017,31 +979,27 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
+impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     pub fn add_position_indices(
         &mut self,
         positions: &[[f32; 2]],
         indices: &[IndexType],
         color: [u8; 4],
     ) {
-        let mut def = Vertex::default();
-        def.set_color(color);
-        let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
+        let (vs, is, first) = self.allocate(positions.len(), indices.len(), Vertex::default());
         for (dest, pos) in vs.iter_mut().zip(positions) {
-            dest.set_pos(*pos);
+            *dest = Vertex::from_pos2_color(*pos, color);
         }
         for (dest, index) in is.iter_mut().zip(indices) {
             *dest = index + first;
         }
     }
     pub fn add_rect_fill(&mut self, start: Vec2, end: Vec2, color: [u8; 4]) {
-        let mut def = Vertex::default();
-        def.set_color(color);
-        let (vs, is, first) = self.allocate(4, 6, def);
-        vs[0].set_pos([start.x, start.y]);
-        vs[1].set_pos([end.x, start.y]);
-        vs[2].set_pos([end.x, end.y]);
-        vs[3].set_pos([start.x, end.y]);
+        let (vs, is, first) = self.allocate(4, 6, Vertex::default());
+        vs[0] = Vertex::from_pos2_color([start.x, start.y], color);
+        vs[1] = Vertex::from_pos2_color([end.x, start.y], color);
+        vs[2] = Vertex::from_pos2_color([end.x, end.y], color);
+        vs[3] = Vertex::from_pos2_color([start.x, end.y], color);
 
         is[0] = first + 0;
         is[1] = first + 1;
@@ -1052,9 +1010,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     }
 
     pub fn add_rect_outline(&mut self, start: Vec2, end: Vec2, thickness: f32, color: [u8; 4]) {
-        let mut def = Vertex::default();
-        def.set_color(color);
-        let (vs, indices, first) = self.allocate(8, 24, def);
+        let (vs, indices, first) = self.allocate(8, 24, Vertex::default());
 
         let ht = thickness * 0.5;
         let ht = vec2(ht, ht);
@@ -1063,14 +1019,14 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         let is = start + ht;
         let ie = end - ht;
 
-        vs[0].set_pos([os.x, os.y]);
-        vs[1].set_pos([oe.x, os.y]);
-        vs[2].set_pos([oe.x, oe.y]);
-        vs[3].set_pos([os.x, oe.y]);
-        vs[4].set_pos([is.x, is.y]);
-        vs[5].set_pos([ie.x, is.y]);
-        vs[6].set_pos([ie.x, ie.y]);
-        vs[7].set_pos([is.x, ie.y]);
+        vs[0] = Vertex::from_pos2_color([os.x, os.y], color);
+        vs[1] = Vertex::from_pos2_color([oe.x, os.y], color);
+        vs[2] = Vertex::from_pos2_color([oe.x, oe.y], color);
+        vs[3] = Vertex::from_pos2_color([os.x, oe.y], color);
+        vs[4] = Vertex::from_pos2_color([is.x, is.y], color);
+        vs[5] = Vertex::from_pos2_color([ie.x, is.y], color);
+        vs[6] = Vertex::from_pos2_color([ie.x, ie.y], color);
+        vs[7] = Vertex::from_pos2_color([is.x, ie.y], color);
 
         // 0         1
         //   4     5
@@ -1108,17 +1064,15 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Copy + Default + VertexPos3 + VertexColor> GeometryBatch<Vertex> {
+impl<Vertex: Copy + Default + FromPos3Color> GeometryBatch<Vertex> {
     pub fn add_box(&mut self, center: [f32; 3], size: [f32; 3], color: [u8; 4]) {
-        let mut def = Vertex::default();
-        def.set_color(color);
-        let (vs, is, first) = self.allocate(8, 36, def);
+        let (vs, is, first) = self.allocate(8, 36, Vertex::default());
         for (v, i) in vs.iter_mut().zip(0..8) {
-            v.set_pos3([
+            *v = Vertex::from_pos3_color([
                 center[0] + size[0] * ((i & 1) as f32 - 1.0f32),
                 center[1] + size[1] * (((i & 2) >> 1) as f32 - 1.0f32),
                 center[2] + size[2] * (((i & 4) >> 2) as f32 - 1.0f32),
-            ]);
+            ], color);
         }
 
         let cube_indices: [IndexType; 36] = [
@@ -1140,11 +1094,9 @@ impl<Vertex: Copy + Default + VertexPos3 + VertexColor> GeometryBatch<Vertex> {
         indices: &[IndexType],
         color: [u8; 4],
     ) {
-        let mut def = Vertex::default();
-        def.set_color(color);
-        let (vs, is, first) = self.allocate(positions.len(), indices.len(), def);
+        let (vs, is, first) = self.allocate(positions.len(), indices.len(), Vertex::default());
         for (dest, pos) in vs.iter_mut().zip(positions) {
-            dest.set_pos3(*pos);
+            *dest = Vertex::from_pos3_color(*pos, color);
         }
         for (dest, index) in is.iter_mut().zip(indices) {
             *dest = index + first;
@@ -1152,21 +1104,14 @@ impl<Vertex: Copy + Default + VertexPos3 + VertexColor> GeometryBatch<Vertex> {
     }
 }
 
-impl<Vertex: Default + Copy + VertexPos2 + VertexUV + VertexColor> GeometryBatch<Vertex> {
+impl<Vertex: Default + Copy + FromPos2ColorUV> GeometryBatch<Vertex> {
     pub fn add_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], color: [u8; 4]) -> &mut [Vertex] {
-        let mut def = Vertex::default();
-        def.set_color(color);
-        let (vs, is, first) = self.allocate(4, 6, def);
+        let (vs, is, first) = self.allocate(4, 6, Vertex::default());
 
-        vs[0].set_pos([rect[0], rect[1]]);
-        vs[1].set_pos([rect[2], rect[1]]);
-        vs[2].set_pos([rect[2], rect[3]]);
-        vs[3].set_pos([rect[0], rect[3]]);
-
-        vs[0].set_uv([uv[0], uv[1]]);
-        vs[1].set_uv([uv[2], uv[1]]);
-        vs[2].set_uv([uv[2], uv[3]]);
-        vs[3].set_uv([uv[0], uv[3]]);
+        vs[0] = Vertex::from_pos2_color_uv([rect[0], rect[1]], color, [uv[0], uv[1]]);
+        vs[1] = Vertex::from_pos2_color_uv([rect[2], rect[1]], color, [uv[2], uv[1]]);
+        vs[2] = Vertex::from_pos2_color_uv([rect[2], rect[3]], color, [uv[2], uv[3]]);
+        vs[3] = Vertex::from_pos2_color_uv([rect[0], rect[3]], color, [uv[0], uv[3]]);
 
         is[0] = first + 0;
         is[1] = first + 1;
@@ -1183,23 +1128,20 @@ impl<Vertex: Default + Copy + VertexPos2 + VertexUV + VertexColor> GeometryBatch
         extents: [f32; 2],
         divisions: [IndexType; 2],
         color: [u8; 4],
-        uv_rect: [f32; 4],
+        uv_rect: [f32; 4]
     ) {
-        let mut def = Vertex::default();
-        def.set_color(color);
         let num_points = (divisions[0] * divisions[1]) as usize;
-        let (vs, is, first) = self.allocate(num_points, 6 * num_points, def);
+        let (vs, is, first) = self.allocate(num_points, 6 * num_points, Vertex::default());
 
         for j in 0..=divisions[1] {
             for i in 0..=divisions[0] {
                 let v = &mut vs[(j * (divisions[0] + 1) + i) as usize];
                 let x_f = i as f32 / divisions[0] as f32;
                 let y_f = j as f32 / divisions[1] as f32;
-                v.set_pos([
+                *v = Vertex::from_pos2_color_uv([
                     (x_f - 0.5f32) * extents[0] + center[0],
                     (y_f - 0.5f32) * extents[1] + center[1],
-                ]);
-                v.set_uv([
+                ], color, [
                     uv_rect[0] * x_f + uv_rect[2] * (1.0f32 - x_f),
                     uv_rect[1] * x_f + uv_rect[3] * (1.0f32 - y_f),
                 ]);
@@ -1222,30 +1164,35 @@ impl<Vertex: Default + Copy + VertexPos2 + VertexUV + VertexColor> GeometryBatch
     }
 }
 
-/// A trait to be implemented for your vertex format in to use colored or
-/// alpha-blended primitives.
-pub trait VertexColor {
-    fn set_color(&mut self, color: [u8; 4]);
-    fn set_alpha(&mut self, alpha: u8);
-    fn alpha(&self) -> u8;
-}
-
 /// A trait that needs to be implemented for your vertex format in order
 /// to use 2D-primitives.
-pub trait VertexPos2 {
-    fn set_pos(&mut self, pos: [f32; 2]);
+pub trait FromPos2 {
+    fn from_pos2(pos: [f32; 2])->Self;
 }
+
 
 /// A trait that needs to be implemented for your vertex format in order
 /// to use 3D-primitives.
-pub trait VertexPos3 {
-    fn set_pos3(&mut self, pos: [f32; 3]);
+pub trait FromPos3 {
+    fn from_pos3(pos: [f32; 3])->Self;
+}
+
+/// A trait to be implemented for your vertex format in to use colored or
+/// alpha-blended 2D-primitives.
+pub trait FromPos2Color {
+    fn from_pos2_color(pos: [f32; 2], color: [u8; 4])->Self;
+}
+
+/// A trait to be implemented for your vertex format in to use colored or
+/// alpha-blended 2D-primitives.
+pub trait FromPos3Color {
+    fn from_pos3_color(pos: [f32; 3], color: [u8; 4])->Self;
 }
 
 /// A trait to be implemented for your vertex format in order
 /// to use primitives with UV coordinates.
-pub trait VertexUV {
-    fn set_uv(&mut self, uv: [f32; 2]);
+pub trait FromPos2ColorUV {
+    fn from_pos2_color_uv(pos: [f32; 2], color: [u8; 4], uv: [f32; 2])->Self;
 }
 
 /// Individual command in a drawing list.

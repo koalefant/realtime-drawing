@@ -1,4 +1,4 @@
-use crate::{VertexColor, VertexPos2, VertexPos3, VertexUV};
+use crate::{FromPos2, FromPos3, FromPos2Color, FromPos3Color, FromPos2ColorUV};
 use core::default::Default;
 
 #[repr(C)]
@@ -34,29 +34,53 @@ impl Default for VertexPos3UvColor {
         }
     }
 }
-impl VertexPos2 for VertexPos3UvColor {
-    fn set_pos(&mut self, pos: [f32; 2]) {
-        self.pos = [pos[0], pos[1], 0.0];
+impl FromPos2 for VertexPos3UvColor {
+    fn from_pos2(pos: [f32; 2])->Self {
+        Self{
+            pos: [pos[0], pos[1], 0.0],
+            color: [255, 255, 255, 255],
+            uv: [0.0, 0.0]
+        }
     }
 }
-impl VertexPos3 for VertexPos3UvColor {
-    fn set_pos3(&mut self, pos: [f32; 3]) {
-        self.pos = pos;
+
+impl FromPos3 for VertexPos3UvColor {
+    fn from_pos3(pos: [f32; 3])->Self {
+        Self{
+            pos,
+            color: [255, 255, 255, 255],
+            uv: [0.0, 0.0]
+        }
     }
 }
-impl VertexUV for VertexPos3UvColor {
-    fn set_uv(&mut self, uv: [f32; 2]) {
-        self.uv = uv;
+
+impl FromPos2Color for VertexPos3UvColor {
+    fn from_pos2_color(pos: [f32; 2], color: [u8; 4])->Self {
+        Self{
+            pos: [pos[0], pos[1], 0.0],
+            color,
+            uv: [0.0, 0.0]
+        }
     }
 }
-impl VertexColor for VertexPos3UvColor {
-    fn set_color(&mut self, color: [u8; 4]) {
-        self.color = color;
-    }
-    fn set_alpha(&mut self, alpha: u8) {
-        self.color[3] = alpha;
-    }
-    fn alpha(&self) -> u8 {
-        self.color[3]
+
+impl FromPos3Color for VertexPos3UvColor {
+    fn from_pos3_color(pos: [f32; 3], color: [u8; 4])->Self {
+        Self{
+            pos,
+            color,
+            uv: [0.0, 0.0]
+        }
     }
 }
+
+impl FromPos2ColorUV for VertexPos3UvColor {
+    fn from_pos2_color_uv(pos: [f32; 2], color: [u8; 4], uv: [f32; 2])->Self {
+        Self{
+            pos: [pos[0], pos[1], 0.0],
+            color,
+            uv
+        }
+    }
+}
+
