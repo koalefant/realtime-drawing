@@ -1,4 +1,4 @@
-use crate::{FromPos2, FromPos3, FromPos2Color, FromPos3Color, FromPos2ColorUV};
+use crate::{FromPos2Color, FromPos3Color, FromPos2ColorUV};
 use core::default::Default;
 
 #[repr(C)]
@@ -34,26 +34,6 @@ impl Default for VertexPos3UvColor {
         }
     }
 }
-impl FromPos2 for VertexPos3UvColor {
-    fn from_pos2(pos: [f32; 2])->Self {
-        Self{
-            pos: [pos[0], pos[1], 0.0],
-            color: [255, 255, 255, 255],
-            uv: [0.0, 0.0]
-        }
-    }
-}
-
-impl FromPos3 for VertexPos3UvColor {
-    fn from_pos3(pos: [f32; 3])->Self {
-        Self{
-            pos,
-            color: [255, 255, 255, 255],
-            uv: [0.0, 0.0]
-        }
-    }
-}
-
 impl FromPos2Color for VertexPos3UvColor {
     fn from_pos2_color(pos: [f32; 2], color: [u8; 4])->Self {
         Self{

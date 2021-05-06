@@ -6,7 +6,7 @@
 //! - GPU rendering: output to streamed vertex/index buffers.
 //! - Aggressive batching across primitive types.
 //! - Backend-agnostic. Comes with [`MiniquadBatch`] that implements [`miniquad`]-backend out of the box. Easy integration into existing engines.
-//! - Works with custom vertex format through traits. See [`FromPos2`], [`FromPos3Color`] etc.
+//! - Works with custom vertex format through traits. See [`FromPos2Color`], [`FromPos3Color`] etc.
 //! - Can be used with 16-bit indices (to reduce memory bandwidth) and update multiple buffers when reaching 65K vertex/index limits.
 //! - Easy to extend with custom traits.
 //! - WebAssembly support.
@@ -1164,33 +1164,23 @@ impl<Vertex: Default + Copy + FromPos2ColorUV> GeometryBatch<Vertex> {
     }
 }
 
-/// A trait that needs to be implemented for your vertex format in order
-/// to use 2D-primitives.
-pub trait FromPos2 {
-    fn from_pos2(pos: [f32; 2])->Self;
-}
-
-
-/// A trait that needs to be implemented for your vertex format in order
-/// to use 3D-primitives.
-pub trait FromPos3 {
-    fn from_pos3(pos: [f32; 3])->Self;
-}
-
-/// A trait to be implemented for your vertex format in to use colored or
-/// alpha-blended 2D-primitives.
+/// Construct a vertex from 2D-position + color.
+///
+/// Implement this trait for your vertex type.
 pub trait FromPos2Color {
     fn from_pos2_color(pos: [f32; 2], color: [u8; 4])->Self;
 }
 
-/// A trait to be implemented for your vertex format in to use colored or
-/// alpha-blended 2D-primitives.
+/// Construct a vertex from 3D-position + color.
+///
+/// Implement this trait for your vertex type.
 pub trait FromPos3Color {
     fn from_pos3_color(pos: [f32; 3], color: [u8; 4])->Self;
 }
 
-/// A trait to be implemented for your vertex format in order
-/// to use primitives with UV coordinates.
+/// Construct a vertex from 2D-position + color + uv.
+///
+/// Implement this trait for your vertex type.
 pub trait FromPos2ColorUV {
     fn from_pos2_color_uv(pos: [f32; 2], color: [u8; 4], uv: [f32; 2])->Self;
 }
