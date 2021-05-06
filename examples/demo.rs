@@ -51,11 +51,11 @@ impl EventHandler for Example {
             // fill
             //self.batch
             //    .geometry
-            //    .add_circle(center, 32.0, num_segments, [255, 255, 255, 255]);
+            //    .add_circle_fill(center, 32.0, num_segments, [255, 255, 255, 255]);
 
             self.batch
                 .geometry
-                .add_circle_aa(center_aa, 32.0, num_segments, [255, 255, 255, 255]);
+                .add_circle_fill_aa(center_aa, 32.0, num_segments, [255, 255, 255, 255]);
 
             // multiple outlines
             for &(r, thickness) in [(48.0, 2.0), (64.0, 1.0), (80.0, 0.5), (96.0, 0.25)].iter().rev() {

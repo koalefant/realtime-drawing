@@ -12,7 +12,7 @@
 //! - WebAssembly support.
 //! - Pure rust, no unsafe code.
 //!
-//! Individual drawing operations such as [`GeometryBatch::add_circle_aa`] or
+//! Individual drawing operations such as [`GeometryBatch::add_circle_fill_aa`] or
 //! [`GeometryBatch::add_polyline_aa`] are available in [`GeometryBatch`] implementation.
 //!
 /// [`miniquad`]: https://docs.rs/miniquad/
@@ -40,7 +40,7 @@ type IndexType = u16;
 /// // initialization stage
 /// let geometry = GeometryBatch::new(1024, 1024);
 /// geometry.clear();
-/// geometry.add_circle_aa(vec2(512.0, 512.0), 128.0, 64);
+/// geometry.add_circle_fill_aa(vec2(512.0, 512.0), 128.0, 64);
 /// geometry.add_polyline_aa(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
 ///                               [255, 0, 0, 255], true, 2.0);
 ///
@@ -210,7 +210,7 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     /// Closure arguments are `(pos, alpha, u)` where `u` is normalized polar coordinate on a circle.
     #[inline]
-    pub fn add_circle_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
+    pub fn add_circle_fill_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -259,7 +259,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     ///
     /// Circle outer edge is constructed out of `num_segments`-linear segments.
     #[inline]
-    pub fn add_circle_aa(
+    pub fn add_circle_fill_aa(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -268,7 +268,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
     ) {
         let mut def = Vertex::default();
         def.set_color(color);
-        self.add_circle_aa_with(center, radius, num_segments, move |pos, alpha, _| {
+        self.add_circle_fill_aa_with(center, radius, num_segments, move |pos, alpha, _| {
             let mut v = def;
             v.set_pos(pos.into());
             v.set_alpha((color[3] as f32 * alpha) as u8);
@@ -1012,7 +1012,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
         // TODO: optimal non-overlapping implementation
         self.add_polyline_variable_aa(points, radius, color);
         for (&point, &r) in points.iter().zip(radius.iter()) {
-            self.add_circle_aa(point, r, r.ceil() as usize * 3, color);
+            self.add_circle_fill_aa(point, r, r.ceil() as usize * 3, color);
         }
     }
 }
@@ -1034,7 +1034,7 @@ impl<Vertex: Copy + Default + VertexPos2 + VertexColor> GeometryBatch<Vertex> {
             *dest = index + first;
         }
     }
-    pub fn add_rect(&mut self, start: Vec2, end: Vec2, color: [u8; 4]) {
+    pub fn add_rect_fill(&mut self, start: Vec2, end: Vec2, color: [u8; 4]) {
         let mut def = Vertex::default();
         def.set_color(color);
         let (vs, is, first) = self.allocate(4, 6, def);
