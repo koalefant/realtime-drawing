@@ -107,7 +107,7 @@ impl EventHandler for Example {
                 vec2(36.0, 40.0), vec2(20.0, 24.0), vec2(24.0, 20.0), vec2(48.0, 44.0),
                 vec2(48.0, 48.0), vec2(8.0, 48.0), vec2(0.0, 40.0), 
             ];
-            let thickness_list = [1.0, 4.0];
+            let thickness_list = [1.0, 2.0, 4.0];
             for (i, &thickness) in thickness_list.iter().enumerate() {
                 let offset = vec2(w * 0.5 + (i as f32 - 0.5) * 112.0, h * 0.2 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
                 self.batch.geometry.add_polyline_aa(
