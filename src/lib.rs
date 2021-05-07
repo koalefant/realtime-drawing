@@ -27,6 +27,7 @@ use core::marker::Copy;
 use glam::vec2;
 use glam::Vec2;
 use std::f32::consts::PI;
+use std::mem::take;
 
 type IndexType = u16;
 
@@ -78,6 +79,10 @@ pub struct GeometryBatch<Vertex: Copy> {
     draw_indices: usize,
     buffer_vertices_end: usize,
     buffer_indices_end: usize,
+
+    // temporary buffers to avoid stack allocations
+    temp_points: Vec<Vec2>,
+    temp_normals: Vec<Vec2>,
 }
 
 impl<Vertex: Copy> GeometryBatch<Vertex> {
@@ -101,6 +106,8 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
             buffer_indices_end: max_buffer_indices,
             last_indices_command,
             last_vertices_command,
+            temp_points: Vec::new(),
+            temp_normals: Vec::new(),
         }
     }
 
@@ -540,6 +547,8 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         self.add_polyline(&[start, end], color, false, thickness);
     }
 
+    // Implementation is based on ImDrawList::AddPoyline implementation from Dear ImGui by Omar Cornut 
+    // (https://github.com/ocornut/imgui/, MIT license) and Pavel Potoček (https://github.com/potocpav)
     fn add_polyline_internal<const ANTIALIAS: bool>(
         &mut self,
         points: &[Vec2],
@@ -547,7 +556,6 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         closed: bool,
         thickness: f32,
     ) {
-        // based on AddPoyline from Dear ImGui by Omar Cornut (MIT)
         let points_count = points.len();
         if points_count < 2 {
             return;
@@ -926,9 +934,12 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         let color_transparent = [color[0], color[1], color[2], alpha_transparent];
         let index_count = count * 18;
         let vertex_count = points.len() * 4;
+
+        // move out temporary buffers as self.allocate borrows self
+        let mut temp_normals = take(&mut self.temp_normals);
+        let mut temp_points = take(&mut self.temp_points);
+
         let (vs, is, first) = self.allocate(vertex_count, index_count, Vertex::default());
-        let mut temp_normals = Vec::new();
-        let mut temp_points = Vec::new();
         temp_normals.resize(points.len(), vec2(0., 0.));
         temp_points.resize(points.len() * 4, vec2(0., 0.));
         for i1 in 0..count {
@@ -1014,6 +1025,10 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
             vs[i * 4 + 2] = Vertex::from_pos2_color(temp_points[i * 4 + 2].into(), color);
             vs[i * 4 + 3] = Vertex::from_pos2_color(temp_points[i * 4 + 3].into(), color_transparent);
         }
+
+        // return temporary buffers
+        self.temp_normals = temp_normals;
+        self.temp_points = temp_points;
     }
 
     pub fn add_capsule_chain_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
