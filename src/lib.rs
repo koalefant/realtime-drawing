@@ -635,7 +635,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 
                 let d_len = sqlen1.sqrt();
                 if d_len > 0.0 {
-                    let inv = pixel_size / d_len;
+                    let inv = 1.0 / d_len;
                     dx1 *= inv;
                     dy1 *= inv;
                 }
@@ -653,7 +653,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 
                 let d_len = sqlen2.sqrt();
                 if d_len > 0.0 {
-                    let inv = pixel_size / d_len;
+                    let inv = 1.0 / d_len;
                     dx2 *= inv;
                     dy2 *= inv;
                 }
