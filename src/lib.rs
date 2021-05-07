@@ -208,9 +208,9 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
-    /// Closure arguments are `(pos, alpha, u)` where `u` is normalized polar coordinate on a circle.
+    /// Closure arguments are `(pos, alpha, uv)` where `uv` are normalized polar coordinates on the circle.
     #[inline]
-    pub fn add_circle_fill_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
+    pub fn add_circle_fill_aa_with<ToVertex: FnMut(Vec2, f32, Vec2) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -228,10 +228,10 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
             let sin = angle.sin();
             for (v, p) in pair.iter_mut().zip(&[0.0, pixel]) {
                 let pos = center + vec2(cos, sin) * (radius - half_pixel + p);
-                *v = to_vertex(pos, 1.0 - p, u);
+                *v = to_vertex(pos, 1.0 - p, vec2(u, 1.0));
             }
         }
-        *vs.last_mut().unwrap() = to_vertex(center, 1.0, 0.0);
+        *vs.last_mut().unwrap() = to_vertex(center, 1.0, vec2(0.0, 0.0));
         let central_vertex = num_segments * 2;
 
         for (section_i, section) in is.chunks_mut(9).enumerate() {
@@ -252,10 +252,40 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
             }
         }
     }
+    
+    /// Closure arguments are `(pos, uv)` where `u` is normalized polar coordinate on a circle.
+    #[inline]
+    pub fn add_circle_fill_with<ToVertex: FnMut(Vec2, Vec2) -> Vertex>(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        num_segments: usize,
+        mut to_vertex: ToVertex,
+    ) {
+        let (vs, is, first) =
+            self.allocate(num_segments + 1, num_segments * 3, Vertex::default());
+        for (i, v) in vs.iter_mut().enumerate() {
+            let u = i as f32 / num_segments as f32;
+            let angle = u * 2.0 * std::f32::consts::PI;
+            let cos = angle.cos();
+            let sin = angle.sin();
+            let pos = center + vec2(cos, sin) * radius;
+            *v = to_vertex(pos, vec2(u, 1.0));
+        }
+        *vs.last_mut().unwrap() = to_vertex(center, vec2(0.0, 0.0));
+        let central_vertex = num_segments;
+
+        for (section_i, section) in is.chunks_mut(3).enumerate() {
+            let section_n = (section_i + 1) % num_segments;
+            section[0] = first + central_vertex as IndexType;
+            section[1] = first + section_i as IndexType;
+            section[2] = first + section_n as IndexType;
+        }
+    }
 }
 
 impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
-    /// Adds filled circle positioned at `center` with `radius` and `thickness`.
+    /// Adds filled antialiased circle positioned at `center` with `radius` and `thickness`.
     ///
     /// Circle outer edge is constructed out of `num_segments`-linear segments.
     #[inline]
@@ -266,8 +296,24 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         num_segments: usize,
         color: [u8; 4],
     ) {
-        self.add_circle_fill_aa_with(center, radius, num_segments, move |pos, alpha, _| {
+        self.add_circle_fill_aa_with(center, radius, num_segments, move |pos, alpha, _uv| {
             Vertex::from_pos2_color(pos.into(), [color[0], color[1], color[2], (color[3] as f32 * alpha) as u8])
+        })
+    }
+    
+    /// Adds filled circle positioned at `center` with `radius` and `thickness`.
+    ///
+    /// Circle outer edge is constructed out of `num_segments`-linear segments.
+    #[inline]
+    pub fn add_circle_fill(
+        &mut self,
+        center: Vec2,
+        radius: f32,
+        num_segments: usize,
+        color: [u8; 4],
+    ) {
+        self.add_circle_fill_with(center, radius, num_segments, move |pos, _uv| {
+            Vertex::from_pos2_color(pos.into(), color)
         })
     }
 }

@@ -49,9 +49,9 @@ impl EventHandler for Example {
             let num_segments = ((64.0 * view_scale) as usize).max(32);
 
             // fill
-            //self.batch
-            //    .geometry
-            //    .add_circle_fill(center, 32.0, num_segments, [255, 255, 255, 255]);
+            self.batch
+                .geometry
+                .add_circle_fill(center, 32.0, num_segments, [255, 255, 255, 255]);
 
             self.batch
                 .geometry
