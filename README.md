@@ -1,6 +1,8 @@
 # Overview
 `realtime-drawing` is a Rust crate (library) for fast drawing aimed at interactive applications and games. 
 
+This crate is work-in-progress and was not published on crates.io yet.
+
 # Features
 - Optimized for dynamically generated content.
 - Antialiasing of lines using blended strips.
