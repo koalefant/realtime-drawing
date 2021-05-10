@@ -277,7 +277,7 @@ pub struct ShaderUniforms {
 fn main() {
     miniquad::start(
         conf::Conf {
-            sample_count: 4,
+            sample_count: 0,
             window_width: 1280,
             window_height: 720,
             ..Default::default()
