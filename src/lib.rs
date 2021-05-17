@@ -547,7 +547,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         self.add_polyline(&[start, end], color, false, thickness);
     }
 
-    // Implementation is based on ImDrawList::AddPoyline implementation from Dear ImGui by Omar Cornut 
+    // Based on ImDrawList::AddPoyline implementation from Dear ImGui by Omar Cornut 
     // (https://github.com/ocornut/imgui/, MIT license) and Pavel Potoček (https://github.com/potocpav)
     fn add_polyline_internal<const ANTIALIAS: bool>(
         &mut self,
@@ -571,7 +571,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         let col_trans = [color[0], color[1], color[2], 0];
 
         if ANTIALIAS && thickness <= pixel_size {
-            // Anti-aliased stroke approximation
+            // Anti-aliased stroke approaximation
             let idx_count = count * 12;
             let vtx_count = count * 6;
             let (vs, is, first_index) = self.allocate(vtx_count, idx_count, Vertex::default());
@@ -682,12 +682,13 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                 {
                     let mut miter_l = half_thickness / miter_l_recip;
                     // Limit (inner) miter so it doesn't shoot away when miter is longer than adjacent line segments on acute angles
+                    let mut min_sqlen = 0.0;
+                    let mut d_sqlen = 0.0;
                     if bevel {
                         // This is too aggressive (not exactly precise)
-                        let min_sqlen = if sqlen1 > sqlen2 { sqlen2 } else { sqlen1 };
-                        let miter_sqlen = ((dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2))
-                            * miter_l
-                            * miter_l;
+                        min_sqlen = sqlen1.min(sqlen2);
+                        d_sqlen = (dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2);
+                        let miter_sqlen = d_sqlen * miter_l * miter_l;
                         if miter_sqlen > min_sqlen {
                             miter_l *= (min_sqlen / miter_sqlen).sqrt();
                         }
@@ -700,7 +701,14 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                             p1.y + (dy1 + dy2) * miter_l,
                         ),
                         if ANTIALIAS {
-                            let miter_al = half_thickness_aa / miter_l_recip;
+                            let mut miter_al = half_thickness_aa / miter_l_recip;
+                            if bevel {
+                                let miter_sqlen = d_sqlen * miter_al * miter_al;
+                                if miter_sqlen > min_sqlen {
+                                    miter_al *= (min_sqlen / miter_sqlen).sqrt();
+                                }
+                            }
+
                             (
                                 p1.x - (dx1 + dx2) * miter_al,
                                 p1.y - (dy1 + dy2) * miter_al,
@@ -733,7 +741,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                     )
                 };
                 // The two bevel vertices if the angle is right or obtuse
-                // miter_sign == 1, iff the outer (maybe bevelled) edge is on the right, -1 iff it is on the left
+                // miter_sign == 1, if the outer (maybe bevelled) edge is on the right, -1 iff it is on the left
                 let miter_sign = if miter_l_recip >= 0.0 { 1.0 } else { 0.0 }
                     - if miter_l_recip < 0.0 { 1.0 } else { 0.0 };
                 let (b1x, b1y, b2x, b2y) = if bevel {
