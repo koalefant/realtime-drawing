@@ -1057,6 +1057,56 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
+    pub fn fill_convex_polygon_aa(&mut self, points: &[Vec2], color: [u8; 4]) {
+        let mut temp_normals = take(&mut self.temp_normals);
+        let half_pixel_size = self.pixel_size * 0.5;
+        let color_trans = [color[0], color[1], color[2], 0];
+
+        let num_vertices = points.len() * 2;
+        let num_indices = (points.len() - 2) * 3 + points.len() * 6;
+        let (vs, is, first) = self.allocate(num_vertices, num_indices, Vertex::default());
+
+        // indices for inner fill
+        for i in 0..points.len() - 2 {
+            is[i * 3 + 0] = first as IndexType;
+            is[i * 3 + 1] = first + ((i + 1) * 2) as IndexType;
+            is[i * 3 + 2] = first + ((i + 2) * 2) as IndexType;
+        }
+
+        // calculate normals
+        temp_normals.clear();
+        temp_normals.reserve(points.len());
+        for i in 0..points.len() {
+            let p0 = points[i];
+            let p1 = points[(i + 1) % points.len()];
+            let delta = p1 - p0;
+            temp_normals.push(-delta.perp().try_normalize().unwrap_or(vec2(0.0, 0.0)));
+        }
+
+        let fringe_base = (points.len() - 2) * 3;
+        for i in 0..points.len() {
+            let ip = (i + points.len() - 1) % points.len();
+            let n0 = temp_normals[ip];
+            let n1 = temp_normals[i];
+            let hn = (n0 + n1).try_normalize().unwrap_or(vec2(0.0, 0.0)) * half_pixel_size;
+
+            // inner vertex followed by outer vertex
+            vs[i * 2 + 0] = Vertex::from_pos2_color([points[i].x - hn.x, points[i].y - hn.y], color);
+            vs[i * 2 + 1] = Vertex::from_pos2_color([points[i].x + hn.x, points[i].y + hn.y], color_trans);
+
+            // indices for surrounding blended faceloop
+            let base = fringe_base + i * 6;
+            is[base + 0] = first + 0 + 2 * i  as IndexType;
+            is[base + 1] = first + 0 + 2 * ip as IndexType;
+            is[base + 2] = first + 1 + 2 * ip as IndexType;
+            is[base + 3] = first + 1 + 2 * ip as IndexType;
+            is[base + 4] = first + 1 + 2 * i  as IndexType;
+            is[base + 5] = first + 0 + 2 * i  as IndexType;
+        }
+
+        self.temp_normals = temp_normals;
+    }
+
     pub fn add_position_indices(
         &mut self,
         positions: &[[f32; 2]],
@@ -1140,24 +1190,39 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         indices[23] = first + 7;
     }
 
-    /// Adds an antialised rectangle outline with rounded corners.
-    pub fn stroke_rounded_rect_aa(&mut self, start: Vec2, end: Vec2, round_radius: f32, round_points: usize, thickness: f32, color: [u8; 4]) {
+    /// Adds an antialiased rounded rectangle outline between `start` and `end` of `color`. Corners
+    /// are round with radius `corner_radius`. Each corner is built up of `corner_points`-1 linear
+    /// segments.
+    pub fn stroke_round_rect_aa(&mut self, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize, thickness: f32, color: [u8; 4]) {
         let mut temp_path = take(&mut self.temp_path);
         temp_path.clear();
 
-        path::add_rounded_rect(&mut temp_path, start, end, round_radius, round_points);
+        path::add_rounded_rect(&mut temp_path, start, end, corner_radius, corner_points);
         self.stroke_polyline_aa(&temp_path, color, true, thickness);
 
         self.temp_path = temp_path;
     }
     
     /// Adds a rectangle outline with rounded corners
-    pub fn stroke_rounded_rect(&mut self, start: Vec2, end: Vec2, round_radius: f32, round_points: usize, thickness: f32, color: [u8; 4]) {
+    pub fn stroke_rounded_rect(&mut self, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize, thickness: f32, color: [u8; 4]) {
         let mut temp_path = take(&mut self.temp_path);
         temp_path.clear();
 
-        path::add_rounded_rect(&mut temp_path, start, end, round_radius, round_points);
+        path::add_rounded_rect(&mut temp_path, start, end, corner_radius, corner_points);
         self.stroke_polyline(&temp_path, color, true, thickness);
+
+        self.temp_path = temp_path;
+    }
+    
+    /// Adds an antialiased rounded rectangle outline between `start` and `end` of `color`. Corners
+    /// are round with radius `corner_radius`. Each corner is built up of `corner_points`-1 linear
+    /// segments.
+    pub fn fill_round_rect_aa(&mut self, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize, color: [u8; 4]) {
+        let mut temp_path = take(&mut self.temp_path);
+        temp_path.clear();
+
+        path::add_rounded_rect(&mut temp_path, start, end, corner_radius, corner_points);
+        self.fill_convex_polygon_aa(&temp_path, color);
 
         self.temp_path = temp_path;
     }
@@ -1263,7 +1328,7 @@ impl<Vertex: Default + Copy + FromPos2ColorUV> GeometryBatch<Vertex> {
     }
 }
 
-/// Routines for building up paths stored in `Vec<Vec2>`
+/// Routines for constructing paths in `Vec<Vec2>`
 pub mod path {
     use super::{Vec2, vec2, PI};
 
@@ -1279,15 +1344,15 @@ pub mod path {
         }
     }
 
-    /// Adds a rounded rectangle between `start` and `end` of `color`. Corner radius is `round_radius`, each
-    /// corner is built up of linear segments `round_points`.
-    pub fn add_rounded_rect(out: &mut Vec<Vec2>, start: Vec2, end: Vec2, round_radius: f32, round_points: usize) {
-        if round_points >= 2 {
-            out.reserve(round_points * 4);
-            add_arc(out, start + vec2(round_radius, round_radius), round_radius, -PI, -PI * 0.5, round_points);
-            add_arc(out, vec2(end.x, start.y) + vec2(-round_radius, round_radius), round_radius, -PI * 0.5, 0.0, round_points);
-            add_arc(out, end + vec2(-round_radius, -round_radius), round_radius, 0.0, PI * 0.5, round_points);
-            add_arc(out, vec2(start.x, end.y) + vec2(round_radius, -round_radius), round_radius, PI * 0.5, PI, round_points);
+    /// Adds a rounded rectangle between `start` and `end` of `color`. Corner radius is `corner_radius`, each
+    /// corner is built up of linear segments `corner_points`.
+    pub fn add_rounded_rect(out: &mut Vec<Vec2>, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize) {
+        if corner_points >= 2 {
+            out.reserve(corner_points * 4);
+            add_arc(out, start + vec2(corner_radius, corner_radius), corner_radius, -PI, -PI * 0.5, corner_points);
+            add_arc(out, vec2(end.x, start.y) + vec2(-corner_radius, corner_radius), corner_radius, -PI * 0.5, 0.0, corner_points);
+            add_arc(out, end + vec2(-corner_radius, -corner_radius), corner_radius, 0.0, PI * 0.5, corner_points);
+            add_arc(out, vec2(start.x, end.y) + vec2(corner_radius, -corner_radius), corner_radius, PI * 0.5, PI, corner_points);
         } else {
             out.reserve(4);
             out.push(start);
