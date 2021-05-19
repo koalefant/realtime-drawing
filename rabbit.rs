@@ -356,22 +356,22 @@ impl Rabbit {
 
         // actual drawing
         // outline
-        geometry.add_circle_fill_aa(body_back, back_r + 1.0, 24, odef);
-        geometry.add_capsule_chain_aa(
+        geometry.fill_circle_aa(body_back, back_r + 1.0, 24, odef);
+        geometry.stroke_capsule_chain_aa(
             &[body_s1.into(), body_s2.into(), body_front.into()],
             &[mid_r1 + 1.0, mid_r2 + 1.0, front_r + 1.0],
             odef,
         );
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &tail_white_points,
             &[1.0, 2.0, 4.0, 3.0],
             [100, 100, 100, 255],
         );
-        geometry.add_capsule_chain_aa(&tail_points, &[6.0, 4.0, 2.75, 2.0], odef);
-        geometry.add_capsule_chain_aa(&ear_points_l, &[3.0, 4.0, 1.5], odef);
-        geometry.add_capsule_chain_aa(&ear_points_r, &[3.0, 4.0, 1.5], odef);
-        geometry.add_circle_fill_aa(shoulder, 5.5, 16, odef);
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(&tail_points, &[6.0, 4.0, 2.75, 2.0], odef);
+        geometry.stroke_capsule_chain_aa(&ear_points_l, &[3.0, 4.0, 1.5], odef);
+        geometry.stroke_capsule_chain_aa(&ear_points_r, &[3.0, 4.0, 1.5], odef);
+        geometry.fill_circle_aa(shoulder, 5.5, 16, odef);
+        geometry.stroke_capsule_chain_aa(
             &[
                 shoulder.into(),
                 elbow.into(),
@@ -381,7 +381,7 @@ impl Rabbit {
             &[5.5, 3.0, 2.5, 1.5],
             odef,
         );
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &[
                 thigh.into(),
                 knee.into(),
@@ -393,16 +393,16 @@ impl Rabbit {
             &[6.5, 4.5, 3.5, 3.5, 3.5, 2.5],
             odef,
         );
-        geometry.add_capsule_chain_aa(&[head_back.into(), head_front.into()], &[8.0, 4.5], odef);
+        geometry.stroke_capsule_chain_aa(&[head_back.into(), head_front.into()], &[8.0, 4.5], odef);
 
         // color
-        geometry.add_circle_fill_aa(body_back, back_r, 24, def);
-        geometry.add_capsule_chain_aa(
+        geometry.fill_circle_aa(body_back, back_r, 24, def);
+        geometry.stroke_capsule_chain_aa(
             &[body_s1.into(), body_s2.into(), body_front.into()],
             &[mid_r1, mid_r2, front_r],
             def,
         );
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &[
                 white_back.into(),
                 white_s1.into(),
@@ -413,27 +413,27 @@ impl Rabbit {
             ldef,
         );
 
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &tail_white_points,
             &[0.0, 1.0, 3.0, 2.0],
             [220, 220, 220, 255],
         );
-        geometry.add_capsule_chain_aa(&tail_points, &[5.0, 3.0, 1.75, 1.0], def);
+        geometry.stroke_capsule_chain_aa(&tail_points, &[5.0, 3.0, 1.75, 1.0], def);
 
         // body spot
-        geometry.add_circle_fill_aa(
+        geometry.fill_circle_aa(
             body_back + body_dir.perp() * dir_sign * 5.0 + body_dir * 2.0,
             2.0,
             8,
             ldef,
         );
         // ears
-        geometry.add_capsule_chain_aa(&ear_points_l, &[2.0, 3.0, 0.5], def);
-        geometry.add_capsule_chain_aa(&ear_points_r, &[2.0, 3.0, 0.5], ldef);
+        geometry.stroke_capsule_chain_aa(&ear_points_l, &[2.0, 3.0, 0.5], def);
+        geometry.stroke_capsule_chain_aa(&ear_points_r, &[2.0, 3.0, 0.5], ldef);
 
-        geometry.add_capsule_chain_aa(&[head_back.into(), head_front.into()], &[7.0, 3.5], def);
+        geometry.stroke_capsule_chain_aa(&[head_back.into(), head_front.into()], &[7.0, 3.5], def);
         //  mask strap
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &[
                 (head_back + vec2(-7.0 * dir_sign, -1.0)).into(),
                 (head_back + vec2(2.5 * dir_sign, -2.0)).into(),
@@ -443,7 +443,7 @@ impl Rabbit {
         );
 
         // mask
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &[
                 (head_back + vec2(2.5 * dir_sign, -2.0)).into(),
                 (head_back + vec2(6.5 * dir_sign, -2.0)).into(),
@@ -451,7 +451,7 @@ impl Rabbit {
             &[3.5, 3.5],
             vmask,
         );
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &[
                 (head_back + vec2(6.0 * dir_sign, 7.0)).into(),
                 (head_back + vec2(8.0 * dir_sign, 8.0)).into(),
@@ -459,11 +459,11 @@ impl Rabbit {
             &[4.5, 4.5],
             vmask,
         );
-        geometry.add_polyline_aa(&ellipse, [0, 255, 0, 255], true, 1.0);
-        geometry.add_polyline_aa(&ellipse2, [89, 89, 89, 255], true, 1.0);
-        geometry.add_polyline_aa(&ellipse3, [64, 64, 64, 255], true, 1.0);
-        geometry.add_circle_fill_aa(shoulder, 4.5, 16, def);
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_polyline_aa(&ellipse, [0, 255, 0, 255], true, 1.0);
+        geometry.stroke_polyline_aa(&ellipse2, [89, 89, 89, 255], true, 1.0);
+        geometry.stroke_polyline_aa(&ellipse3, [64, 64, 64, 255], true, 1.0);
+        geometry.fill_circle_aa(shoulder, 4.5, 16, def);
+        geometry.stroke_capsule_chain_aa(
             &[
                 shoulder.into(),
                 elbow.into(),
@@ -473,7 +473,7 @@ impl Rabbit {
             &[4.5, 2.0, 1.5, 0.5],
             def,
         );
-        geometry.add_capsule_chain_aa(
+        geometry.stroke_capsule_chain_aa(
             &[
                 thigh.into(),
                 knee.into(),
@@ -488,28 +488,28 @@ impl Rabbit {
 
         if debug_alpha > 0.0 {
             let alpha = (255.0 * debug_alpha) as u8;
-            geometry.add_circle_outline_aa(
+            geometry.stroke_circle_aa(
                 self.pos + offset,
                 RABBIT_RADIUS as _,
                 1.0,
                 32,
                 [255, 255, 255, alpha],
             );
-            geometry.add_circle_fill_aa(front_contact, 4.5, 16, [255, 0, 0, alpha]);
-            geometry.add_circle_fill_aa(back_contact, 4.5, 16, [0, 0, 200, alpha]);
-            geometry.add_polyline_aa(
+            geometry.fill_circle_aa(front_contact, 4.5, 16, [255, 0, 0, alpha]);
+            geometry.fill_circle_aa(back_contact, 4.5, 16, [0, 0, 200, alpha]);
+            geometry.stroke_polyline_aa(
                 &[body_front, body_front + -normal.perp() * dir_sign * 10.0],
                 [255, 0, 0, alpha],
                 false,
                 2.0,
             );
-            geometry.add_polyline_aa(
+            geometry.stroke_polyline_aa(
                 &[body_front, body_front + body_dir * 10.0],
                 [0, 200, 0, alpha],
                 false,
                 2.0,
             );
-            geometry.add_polyline_aa(
+            geometry.stroke_polyline_aa(
                 &[
                     body_front,
                     body_front + self.velocity * DEBUG_VELOCITY_DRAW_SCALE,
@@ -773,7 +773,7 @@ impl RabbitMap {
 
     pub fn draw(&self, geometry: &mut GeometryBatch<VertexPos3UvColor>, offset: Vec2) {
         for &(pos, half_extents) in &self.boxes {
-            geometry.add_rect_fill(
+            geometry.fill_rect(
                 pos - half_extents + offset,
                 pos + half_extents + offset,
                 [32, 32, 32, 255],

@@ -51,15 +51,15 @@ impl EventHandler for Example {
             // fill
             self.batch
                 .geometry
-                .add_circle_fill(center, 32.0, num_segments, [255, 255, 255, 255]);
+                .fill_circle(center, 32.0, num_segments, [255, 255, 255, 255]);
 
             self.batch
                 .geometry
-                .add_circle_fill_aa(center_aa, 32.0, num_segments, [255, 255, 255, 255]);
+                .fill_circle_aa(center_aa, 32.0, num_segments, [255, 255, 255, 255]);
 
             // multiple outlines
             for &(r, thickness) in [(48.0, 2.0), (64.0, 1.0), (80.0, 0.5), (96.0, 0.25)].iter().rev() {
-                self.batch.geometry.add_circle_outline(
+                self.batch.geometry.stroke_circle(
                     center,
                     r,
                     thickness,
@@ -67,7 +67,7 @@ impl EventHandler for Example {
                     [255, 255, 255, 255]
                 );
 
-                self.batch.geometry.add_circle_outline_aa(
+                self.batch.geometry.stroke_circle_aa(
                     center_aa,
                     r,
                     thickness,
@@ -82,20 +82,51 @@ impl EventHandler for Example {
         {
             let thickness_list = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0];
             for (i, &thickness) in thickness_list.iter().enumerate() {
-                let offset = vec2(w * 0.35, h * 0.2 + (i as f32 - 5.0) * 15.0).floor();
-                self.batch.geometry.add_line_aa(
+                let offset = vec2(w * 0.3, h * 0.2 + (i as f32 - 5.0) * 15.0).floor();
+                self.batch.geometry.stroke_line_aa(
                     offset + vec2(-50.0, 10.0),
                     offset + vec2(50.0, -10.0),
                     [255, 255, 255, 255],
                     thickness);
 
-                let offset = vec2(w * 0.35, h * 0.5 + (i as f32 - 5.0) * 15.0).floor();
-                self.batch.geometry.add_line(
+                let offset = vec2(w * 0.3, h * 0.5 + (i as f32 - 5.0) * 15.0).floor();
+                self.batch.geometry.stroke_line(
                     offset + vec2(-50.0, 10.0),
                     offset + vec2(50.0, -10.0),
                     [255, 255, 255, 255],
                     thickness);
             }
+        }
+
+        // round rectangles
+        {
+            let mut offset = vec2(w * 0.45, h * 0.15).round();
+            self.batch.geometry.stroke_rounded_rect_aa(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 4.0, 6, 1.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect_aa(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 8.0, 6, 1.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect_aa(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 16.0, 6, 1.0, [255, 255, 255, 255]);
+
+            let mut offset = vec2(w * 0.45, h * 0.25).round();
+            self.batch.geometry.stroke_rounded_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 4.0, 6, 4.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 8.0, 6, 4.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 16.0, 6, 4.0, [255, 255, 255, 255]);
+
+            let mut offset = vec2(w * 0.45, h * 0.45).round();
+            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 4.0, 6, 1.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 8.0, 6, 1.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 16.0, 6, 1.0, [255, 255, 255, 255]);
+
+            let mut offset = vec2(w * 0.45, h * 0.55).round();
+            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 4.0, 6, 4.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 8.0, 6, 4.0, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 16.0, 6, 4.0, [255, 255, 255, 255]);
         }
 
         // polylines
@@ -109,8 +140,8 @@ impl EventHandler for Example {
             ];
             let thickness_list = [1.0, 2.0, 4.0];
             for (i, &thickness) in thickness_list.iter().enumerate() {
-                let offset = vec2(w * 0.5 + (i as f32 - 0.5) * 112.0, h * 0.2 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
-                self.batch.geometry.add_polyline_aa(
+                let offset = vec2(w * 0.75 + (i as f32 - 0.5) * 112.0, h * 0.2 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
+                self.batch.geometry.stroke_polyline_aa(
                     &points
                     .iter()
                     .map(|p| *p * 2.0 + offset)
@@ -119,8 +150,8 @@ impl EventHandler for Example {
                     true,
                     thickness);
 
-                let offset = vec2(w * 0.5 + (i as f32 - 0.5) * 112.0, h * 0.5 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
-                self.batch.geometry.add_polyline(
+                let offset = vec2(w * 0.75 + (i as f32 - 0.5) * 112.0, h * 0.5 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
+                self.batch.geometry.stroke_polyline(
                     &points
                     .iter()
                     .map(|p| *p * 2.0 + offset)

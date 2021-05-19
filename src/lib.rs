@@ -12,8 +12,8 @@
 //! - WebAssembly support.
 //! - Pure rust, no unsafe code.
 //!
-//! Individual drawing operations such as [`GeometryBatch::add_circle_fill_aa`] or
-//! [`GeometryBatch::add_polyline_aa`] are available in [`GeometryBatch`] implementation.
+//! Individual drawing operations such as [`GeometryBatch::fill_circle_aa`] or
+//! [`GeometryBatch::stroke_polyline_aa`] are available in [`GeometryBatch`] implementation.
 //!
 /// [`miniquad`]: https://docs.rs/miniquad/
 mod example;
@@ -33,7 +33,7 @@ type IndexType = u16;
 
 /// Implements primitive drawing.
 ///
-/// `add_`-methods are used to draw individual primitives.
+/// `stroke_`/`fill_`-methods are used to draw individual primitives.
 ///
 /// # Example
 ///
@@ -41,8 +41,8 @@ type IndexType = u16;
 /// // initialization stage
 /// let geometry = GeometryBatch::new(1024, 1024);
 /// geometry.clear();
-/// geometry.add_circle_fill_aa(vec2(512.0, 512.0), 128.0, 64);
-/// geometry.add_polyline_aa(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
+/// geometry.fill_circle_aa(vec2(512.0, 512.0), 128.0, 64);
+/// geometry.stroke_polyline_aa(&[vec2(384.0, 512.0), vec2(512.0, 512.0), vec2(512.0, 384.0)],
 ///                               [255, 0, 0, 255], true, 2.0);
 ///
 /// // upload geometry.vertices/indices and render according to geometry.commands
@@ -83,6 +83,7 @@ pub struct GeometryBatch<Vertex: Copy> {
     // temporary buffers to avoid stack allocations
     temp_points: Vec<Vec2>,
     temp_normals: Vec<Vec2>,
+    temp_path: Vec<Vec2>,
 }
 
 impl<Vertex: Copy> GeometryBatch<Vertex> {
@@ -108,6 +109,7 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
             last_vertices_command,
             temp_points: Vec::new(),
             temp_normals: Vec::new(),
+            temp_path: Vec::new(),
         }
     }
 
@@ -216,8 +218,9 @@ impl<Vertex: Copy> GeometryBatch<Vertex> {
 
 impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     /// Closure arguments are `(pos, alpha, uv)` where `uv` are normalized polar coordinates on the circle.
+    #[doc(hidden)]
     #[inline]
-    pub fn add_circle_fill_aa_with<ToVertex: FnMut(Vec2, f32, Vec2) -> Vertex>(
+    pub fn fill_circle_aa_with<ToVertex: FnMut(Vec2, f32, Vec2) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -262,7 +265,8 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     
     /// Closure arguments are `(pos, uv)` where `u` is normalized polar coordinate on a circle.
     #[inline]
-    pub fn add_circle_fill_with<ToVertex: FnMut(Vec2, Vec2) -> Vertex>(
+    #[doc(hidden)]
+    pub fn fill_circle_with<ToVertex: FnMut(Vec2, Vec2) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -296,14 +300,14 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     ///
     /// Circle outer edge is constructed out of `num_segments`-linear segments.
     #[inline]
-    pub fn add_circle_fill_aa(
+    pub fn fill_circle_aa(
         &mut self,
         center: Vec2,
         radius: f32,
         num_segments: usize,
         color: [u8; 4],
     ) {
-        self.add_circle_fill_aa_with(center, radius, num_segments, move |pos, alpha, _uv| {
+        self.fill_circle_aa_with(center, radius, num_segments, move |pos, alpha, _uv| {
             Vertex::from_pos2_color(pos.into(), [color[0], color[1], color[2], (color[3] as f32 * alpha) as u8])
         })
     }
@@ -312,14 +316,14 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     ///
     /// Circle outer edge is constructed out of `num_segments`-linear segments.
     #[inline]
-    pub fn add_circle_fill(
+    pub fn fill_circle(
         &mut self,
         center: Vec2,
         radius: f32,
         num_segments: usize,
         color: [u8; 4],
     ) {
-        self.add_circle_fill_with(center, radius, num_segments, move |pos, _uv| {
+        self.fill_circle_with(center, radius, num_segments, move |pos, _uv| {
             Vertex::from_pos2_color(pos.into(), color)
         })
     }
@@ -332,7 +336,8 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     ///
     /// Closure arguments are `(pos, alpha, u)` where u is normalized polar coordinate on a circle.
     #[inline]
-    pub fn add_circle_outline_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
+    #[doc(hidden)]
+    pub fn stroke_circle_aa_with<ToVertex: FnMut(Vec2, f32, f32) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -439,7 +444,8 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     /// Closure arguments are `(pos, uv)` where `u` is a normalized angular coordinate on the circle
     /// and `v` has value of 0.0 on the inner edge and 1.0 on the outer edge.
     #[inline]
-    pub fn add_circle_outline_with<ToVertex: FnMut(Vec2, Vec2) -> Vertex>(
+    #[doc(hidden)]
+    pub fn stroke_circle_with<ToVertex: FnMut(Vec2, Vec2) -> Vertex>(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -481,7 +487,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     ///
     /// The circle is constructed out of `num_segments`-linear segments.
     #[inline]
-    pub fn add_circle_outline_aa(
+    pub fn stroke_circle_aa(
         &mut self,
         center: Vec2,
         radius: f32,
@@ -489,7 +495,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         num_segments: usize,
         color: [u8; 4],
     ) {
-        self.add_circle_outline_aa_with(
+        self.stroke_circle_aa_with(
             center,
             radius,
             thickness,
@@ -504,7 +510,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     ///
     /// The circle is constructed out of `num_segments`-linear segments.
     #[inline]
-    pub fn add_circle_outline (
+    pub fn stroke_circle (
         &mut self,
         center: Vec2,
         radius: f32,
@@ -512,7 +518,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         num_segments: usize,
         color: [u8; 4],
     ) {
-        self.add_circle_outline_with(
+        self.stroke_circle_with(
             center,
             radius,
             thickness,
@@ -524,32 +530,32 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     /// Draws an antialiased line from `start` to `finish` of `thickness` and `color`.
     ///
     /// The line is drawn without caps. Caps are not antialiased.
-    pub fn add_line_aa(
+    pub fn stroke_line_aa(
         &mut self,
         start: Vec2,
         end: Vec2,
         color: [u8; 4],
         thickness: f32,
     ) {
-        self.add_polyline_aa(&[start, end], color, false, thickness);
+        self.stroke_polyline_aa(&[start, end], color, false, thickness);
     }
     
     /// Draws a line from `start` to `finish` of `thickness` and `color`.
     ///
     /// The line is drawn without caps. Caps are not antialiased.
-    pub fn add_line(
+    pub fn stroke_line(
         &mut self,
         start: Vec2,
         end: Vec2,
         color: [u8; 4],
         thickness: f32,
     ) {
-        self.add_polyline(&[start, end], color, false, thickness);
+        self.stroke_polyline(&[start, end], color, false, thickness);
     }
 
     // Based on ImDrawList::AddPoyline implementation from Dear ImGui by Omar Cornut 
     // (https://github.com/ocornut/imgui/, MIT license) and Pavel Potoček (https://github.com/potocpav)
-    fn add_polyline_internal<const ANTIALIAS: bool>(
+    fn stroke_polyline_internal<const ANTIALIAS: bool>(
         &mut self,
         points: &[Vec2],
         color: [u8; 4],
@@ -904,14 +910,14 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     /// When `closed` is set the last and first points are connected as well.
     ///
     /// The line is drawn without caps. Caps are not antialiased.
-    pub fn add_polyline_aa(
+    pub fn stroke_polyline_aa(
         &mut self,
         points: &[Vec2],
         color: [u8; 4],
         closed: bool,
         thickness: f32,
     ) {
-        self.add_polyline_internal::<true>(points, color, closed, thickness)
+        self.stroke_polyline_internal::<true>(points, color, closed, thickness)
     }
 
     /// Draws a connected sequence of line segments passing through `points`.
@@ -919,17 +925,18 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     /// When `closed` is set the last and first points are connected as well.
     ///
     /// The line is drawn without any caps.
-    pub fn add_polyline(
+    pub fn stroke_polyline(
         &mut self,
         points: &[Vec2],
         color: [u8; 4],
         closed: bool,
         thickness: f32,
     ) {
-        self.add_polyline_internal::<false>(points, color, closed, thickness)
+        self.stroke_polyline_internal::<false>(points, color, closed, thickness)
     }
 
-    pub fn add_polyline_variable_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
+    #[doc(hidden)]
+    pub fn stroke_polyline_variable_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
         if points.len() < 2 {
             return;
         }
@@ -1039,11 +1046,12 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         self.temp_points = temp_points;
     }
 
-    pub fn add_capsule_chain_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
+    #[doc(hidden)]
+    pub fn stroke_capsule_chain_aa(&mut self, points: &[Vec2], radius: &[f32], color: [u8; 4]) {
         // TODO: optimal non-overlapping implementation
-        self.add_polyline_variable_aa(points, radius, color);
+        self.stroke_polyline_variable_aa(points, radius, color);
         for (&point, &r) in points.iter().zip(radius.iter()) {
-            self.add_circle_fill_aa(point, r, r.ceil() as usize * 3, color);
+            self.fill_circle_aa(point, r, r.ceil() as usize * 3, color);
         }
     }
 }
@@ -1063,7 +1071,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
             *dest = index + first;
         }
     }
-    pub fn add_rect_fill(&mut self, start: Vec2, end: Vec2, color: [u8; 4]) {
+    pub fn fill_rect(&mut self, start: Vec2, end: Vec2, color: [u8; 4]) {
         let (vs, is, first) = self.allocate(4, 6, Vertex::default());
         vs[0] = Vertex::from_pos2_color([start.x, start.y], color);
         vs[1] = Vertex::from_pos2_color([end.x, start.y], color);
@@ -1078,7 +1086,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         is[5] = first + 3;
     }
 
-    pub fn add_rect_outline(&mut self, start: Vec2, end: Vec2, thickness: f32, color: [u8; 4]) {
+    pub fn stroke_rect(&mut self, start: Vec2, end: Vec2, thickness: f32, color: [u8; 4]) {
         let (vs, indices, first) = self.allocate(8, 24, Vertex::default());
 
         let ht = thickness * 0.5;
@@ -1131,6 +1139,28 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         indices[22] = first + 4;
         indices[23] = first + 7;
     }
+
+    /// Adds an antialised rectangle outline with rounded corners.
+    pub fn stroke_rounded_rect_aa(&mut self, start: Vec2, end: Vec2, round_radius: f32, round_points: usize, thickness: f32, color: [u8; 4]) {
+        let mut temp_path = take(&mut self.temp_path);
+        temp_path.clear();
+
+        path::add_rounded_rect(&mut temp_path, start, end, round_radius, round_points);
+        self.stroke_polyline_aa(&temp_path, color, true, thickness);
+
+        self.temp_path = temp_path;
+    }
+    
+    /// Adds a rectangle outline with rounded corners
+    pub fn stroke_rounded_rect(&mut self, start: Vec2, end: Vec2, round_radius: f32, round_points: usize, thickness: f32, color: [u8; 4]) {
+        let mut temp_path = take(&mut self.temp_path);
+        temp_path.clear();
+
+        path::add_rounded_rect(&mut temp_path, start, end, round_radius, round_points);
+        self.stroke_polyline(&temp_path, color, true, thickness);
+
+        self.temp_path = temp_path;
+    }
 }
 
 impl<Vertex: Copy + Default + FromPos3Color> GeometryBatch<Vertex> {
@@ -1174,7 +1204,7 @@ impl<Vertex: Copy + Default + FromPos3Color> GeometryBatch<Vertex> {
 }
 
 impl<Vertex: Default + Copy + FromPos2ColorUV> GeometryBatch<Vertex> {
-    pub fn add_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], color: [u8; 4]) -> &mut [Vertex] {
+    pub fn fill_rect_uv(&mut self, rect: [f32; 4], uv: [f32; 4], color: [u8; 4]) -> &mut [Vertex] {
         let (vs, is, first) = self.allocate(4, 6, Vertex::default());
 
         vs[0] = Vertex::from_pos2_color_uv([rect[0], rect[1]], color, [uv[0], uv[1]]);
@@ -1229,6 +1259,41 @@ impl<Vertex: Default + Copy + FromPos2ColorUV> GeometryBatch<Vertex> {
                         .copy_from_slice(&[inds[0], inds[1], inds[2], inds[0], inds[2], inds[3]]);
                 }
             }
+        }
+    }
+}
+
+/// Routines for building up paths stored in `Vec<Vec2>`
+pub mod path {
+    use super::{Vec2, vec2, PI};
+
+    /// Adds an arc consisting of `num_points`, at `center` and `radius`. Between `angle_start` and `angle_end`.
+    pub fn add_arc(path: &mut Vec<Vec2>, center: Vec2, radius: f32, angle_start: f32, angle_end: f32, num_points: usize) {
+        if num_points < 2 {
+            return;
+        }
+        path.reserve(num_points);
+        for i in 0..num_points {
+            let f = angle_start + (angle_end - angle_start) * (i as f32 / (num_points - 1) as f32);
+            path.push(center + vec2(f.cos(), f.sin()) * radius);
+        }
+    }
+
+    /// Adds a rounded rectangle between `start` and `end` of `color`. Corner radius is `round_radius`, each
+    /// corner is built up of linear segments `round_points`.
+    pub fn add_rounded_rect(out: &mut Vec<Vec2>, start: Vec2, end: Vec2, round_radius: f32, round_points: usize) {
+        if round_points >= 2 {
+            out.reserve(round_points * 4);
+            add_arc(out, start + vec2(round_radius, round_radius), round_radius, -PI, -PI * 0.5, round_points);
+            add_arc(out, vec2(end.x, start.y) + vec2(-round_radius, round_radius), round_radius, -PI * 0.5, 0.0, round_points);
+            add_arc(out, end + vec2(-round_radius, -round_radius), round_radius, 0.0, PI * 0.5, round_points);
+            add_arc(out, vec2(start.x, end.y) + vec2(round_radius, -round_radius), round_radius, PI * 0.5, PI, round_points);
+        } else {
+            out.reserve(4);
+            out.push(start);
+            out.push(vec2(end.x, start.y));
+            out.push(end);
+            out.push(vec2(start.x, end.y));
         }
     }
 }
