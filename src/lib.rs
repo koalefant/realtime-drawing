@@ -1107,6 +1107,20 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         self.temp_normals = temp_normals;
     }
 
+    pub fn fill_convex_polygon(&mut self, points: &[Vec2], color: [u8; 4]) {
+        let num_vertices = points.len();
+        let num_indices = (points.len() - 2) * 3;
+        let (vs, is, first) = self.allocate(num_vertices, num_indices, Vertex::default());
+        for i in 0..points.len() {
+            vs[i] = Vertex::from_pos2_color([points[i].x, points[i].y], color);
+        }
+        for i in 0..points.len() - 2 {
+            is[i * 3 + 0] = first as IndexType;
+            is[i * 3 + 1] = first + (i + 1) as IndexType;
+            is[i * 3 + 2] = first + (i + 2) as IndexType;
+        }
+    }
+
     pub fn add_position_indices(
         &mut self,
         positions: &[[f32; 2]],
@@ -1204,7 +1218,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     }
     
     /// Adds a rectangle outline with rounded corners
-    pub fn stroke_rounded_rect(&mut self, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize, thickness: f32, color: [u8; 4]) {
+    pub fn stroke_round_rect(&mut self, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize, thickness: f32, color: [u8; 4]) {
         let mut temp_path = take(&mut self.temp_path);
         temp_path.clear();
 
@@ -1214,7 +1228,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         self.temp_path = temp_path;
     }
     
-    /// Adds an antialiased rounded rectangle outline between `start` and `end` of `color`. Corners
+    /// Adds an antialiased rounded rectangle between `start` and `end` of `color`. Corners
     /// are round with radius `corner_radius`. Each corner is built up of `corner_points`-1 linear
     /// segments.
     pub fn fill_round_rect_aa(&mut self, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize, color: [u8; 4]) {
@@ -1223,6 +1237,19 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 
         path::add_rounded_rect(&mut temp_path, start, end, corner_radius, corner_points);
         self.fill_convex_polygon_aa(&temp_path, color);
+
+        self.temp_path = temp_path;
+    }
+    
+    /// Adds a rounded rectangle between `start` and `end` of `color`. Corners
+    /// are round with radius `corner_radius`. Each corner is built up of `corner_points`-1 linear
+    /// segments.
+    pub fn fill_round_rect(&mut self, start: Vec2, end: Vec2, corner_radius: f32, corner_points: usize, color: [u8; 4]) {
+        let mut temp_path = take(&mut self.temp_path);
+        temp_path.clear();
+
+        path::add_rounded_rect(&mut temp_path, start, end, corner_radius, corner_points);
+        self.fill_convex_polygon(&temp_path, color);
 
         self.temp_path = temp_path;
     }

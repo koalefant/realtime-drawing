@@ -101,21 +101,21 @@ impl EventHandler for Example {
         // round rectangles
         {
             // with antialiasing
-            let mut offset = vec2(w * 0.45, h * 0.15).round();
+            let mut offset = vec2(w * 0.45, h * 0.1).round();
             self.batch.geometry.stroke_round_rect_aa(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 4.0, 6, 1.0, [255, 255, 255, 255]);
             offset.x += 110.0;
             self.batch.geometry.stroke_round_rect_aa(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 8.0, 6, 1.0, [255, 255, 255, 255]);
             offset.x += 110.0;
             self.batch.geometry.stroke_round_rect_aa(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 16.0, 6, 1.0, [255, 255, 255, 255]);
 
-            let mut offset = vec2(w * 0.45, h * 0.25).round();
+            let mut offset = vec2(w * 0.45, h * 0.2).round();
             self.batch.geometry.stroke_round_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 4.0, 4, 4.0, [255, 255, 255, 255]);
             offset.x += 110.0;
             self.batch.geometry.stroke_round_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 8.0, 8, 4.0, [255, 255, 255, 255]);
             offset.x += 110.0;
             self.batch.geometry.stroke_round_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 16.0, 16, 4.0, [255, 255, 255, 255]);
 
-            let mut offset = vec2(w * 0.45, h * 0.35).round();
+            let mut offset = vec2(w * 0.45, h * 0.3).round();
             self.batch.geometry.fill_round_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 4.0, 4, [255, 255, 255, 255]);
             offset.x += 110.0;
             self.batch.geometry.fill_round_rect_aa(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 8.0, 8, [255, 255, 255, 255]);
@@ -124,19 +124,26 @@ impl EventHandler for Example {
 
             // no antialiasing
 
-            let mut offset = vec2(w * 0.45, h * 0.45).round();
-            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 4.0, 6, 1.0, [255, 255, 255, 255]);
+            let mut offset = vec2(w * 0.45, h * 0.4).round();
+            self.batch.geometry.stroke_round_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 4.0, 6, 1.0, [255, 255, 255, 255]);
             offset.x += 110.0;
-            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 8.0, 6, 1.0, [255, 255, 255, 255]);
+            self.batch.geometry.stroke_round_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 8.0, 6, 1.0, [255, 255, 255, 255]);
             offset.x += 110.0;
-            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 16.0, 6, 1.0, [255, 255, 255, 255]);
+            self.batch.geometry.stroke_round_rect(offset + vec2(-50.5, -25.5), offset + vec2(50.5, 25.5), 16.0, 6, 1.0, [255, 255, 255, 255]);
 
-            let mut offset = vec2(w * 0.45, h * 0.55).round();
-            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 4.0, 6, 4.0, [255, 255, 255, 255]);
+            let mut offset = vec2(w * 0.45, h * 0.5).round();
+            self.batch.geometry.stroke_round_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 4.0, 6, 4.0, [255, 255, 255, 255]);
             offset.x += 110.0;
-            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 8.0, 6, 4.0, [255, 255, 255, 255]);
+            self.batch.geometry.stroke_round_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 8.0, 6, 4.0, [255, 255, 255, 255]);
             offset.x += 110.0;
-            self.batch.geometry.stroke_rounded_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 16.0, 6, 4.0, [255, 255, 255, 255]);
+            self.batch.geometry.stroke_round_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 16.0, 6, 4.0, [255, 255, 255, 255]);
+
+            let mut offset = vec2(w * 0.45, h * 0.6).round();
+            self.batch.geometry.fill_round_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 4.0, 4, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.fill_round_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 8.0, 8, [255, 255, 255, 255]);
+            offset.x += 110.0;
+            self.batch.geometry.fill_round_rect(offset + vec2(-50.0, -25.0), offset + vec2(50.0, 25.0), 16.0, 16, [255, 255, 255, 255]);
         }
 
         // polylines
