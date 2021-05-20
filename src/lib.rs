@@ -581,7 +581,8 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         }; // segment count
 
         let pixel_size = self.pixel_size;
-        let col_trans = [color[0], color[1], color[2], 0];
+        let color_transparent = [color[0], color[1], color[2], 0];
+        let color_thin = [color[0], color[1], color[2], (color[3] as f32 * thickness / pixel_size).min(255.0) as u8];
 
         // Precise line with bevels on acute angles
         let max_n_vtx = match MODE {
@@ -606,6 +607,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
             _ => unreachable!()
         };
         let half_thickness_aa = half_thickness + pixel_size;
+
         let first_vtx_ptr = first;
         let mut unused_vertices = 0;
         let mut unused_indices = 0;
@@ -785,27 +787,27 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                     };
                     vs[0] = Vertex::from_pos2_color( if bevel_l { [b1x, b1y] } else { [mlx, mly] }, color);
                     vs[1] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
-                    vs[2] = Vertex::from_pos2_color( if bevel_l { [b1ax, b1ay] } else { [mlax, mlay] }, col_trans);
-                    vs[3] = Vertex::from_pos2_color( if bevel_r { [b1ax, b1ay] } else { [mrax, mray] }, col_trans);
+                    vs[2] = Vertex::from_pos2_color( if bevel_l { [b1ax, b1ay] } else { [mlax, mlay] }, color_transparent);
+                    vs[3] = Vertex::from_pos2_color( if bevel_r { [b1ax, b1ay] } else { [mrax, mray] }, color_transparent);
                     if bevel {
                         vs[4] = Vertex::from_pos2_color([b2x, b2y], color);
-                        vs[5] = Vertex::from_pos2_color([b2ax, b2ay], col_trans);
+                        vs[5] = Vertex::from_pos2_color([b2ax, b2ay], color_transparent);
                     }
                     4
                 }
                 MODE_THIN_AA => {
                     let (b1ax, b1ay, b2ax, b2ay) = if bevel {
                         (
-                            p1.x + (dx1 - dy1 * miter_sign) * half_thickness_aa,
-                            p1.y + (dy1 + dx1 * miter_sign) * half_thickness_aa,
-                            p1.x + (dx2 + dy2 * miter_sign) * half_thickness_aa,
-                            p1.y + (dy2 - dx2 * miter_sign) * half_thickness_aa,
+                            p1.x + (dx1 - dy1 * miter_sign) * pixel_size,
+                            p1.y + (dy1 + dx1 * miter_sign) * pixel_size,
+                            p1.x + (dx2 + dy2 * miter_sign) * pixel_size,
+                            p1.y + (dy2 - dx2 * miter_sign) * pixel_size,
                         )
                     } else {
                         (0.0, 0.0, 0.0, 0.0)
                     };
 
-                    let mut miter_al = half_thickness_aa / miter_l_recip;
+                    let mut miter_al = pixel_size / miter_l_recip;
                     if bevel {
                         let miter_sqlen = d_sqlen * miter_al * miter_al;
                         if miter_sqlen > min_sqlen {
@@ -822,18 +824,17 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                         )
                     } else {
                         (
-                            p1.x + dy1 * half_thickness_aa,
-                            p1.y - dx1 * half_thickness_aa,
-                            p1.x - dy1 * half_thickness_aa,
-                            p1.y + dx1 * half_thickness_aa,
+                            p1.x + dy1 * pixel_size,
+                            p1.y - dx1 * pixel_size,
+                            p1.x - dy1 * pixel_size,
+                            p1.y + dx1 * pixel_size,
                         )
                     };
 
-                    vs[0] = Vertex::from_pos2_color( [mlx, mly], color);
-                    vs[1] = Vertex::from_pos2_color( if bevel_l { [b1ax, b1ay] } else { [mlax, mlay] }, col_trans);
-                    vs[2] = Vertex::from_pos2_color( if bevel_r { [b1ax, b1ay] } else { [mrax, mray] }, col_trans);
+                    vs[0] = Vertex::from_pos2_color( [mlx, mly], color_thin); vs[1] = Vertex::from_pos2_color( if bevel_l { [b1ax, b1ay] } else { [mlax, mlay] }, color_transparent);
+                    vs[2] = Vertex::from_pos2_color( if bevel_r { [b1ax, b1ay] } else { [mrax, mray] }, color_transparent);
                     if bevel {
-                        vs[3] = Vertex::from_pos2_color([b2ax, b2ay], col_trans);
+                        vs[3] = Vertex::from_pos2_color([b2ax, b2ay], color_transparent);
                     }
                     3
                 }
@@ -889,7 +890,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                         }
                     }
                     MODE_THIN_AA => {
-                        let m1i = vi + if bevel_l { bi } else { 0 };
+                        let m1i = vi;
                         let m2i = vtx_next_id;
 
                         let l1ai = vi + if bevel_l { 3 } else { 1 };
