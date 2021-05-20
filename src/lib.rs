@@ -28,6 +28,7 @@ use glam::vec2;
 use glam::Vec2;
 use std::f32::consts::PI;
 use std::mem::take;
+use std::unreachable;
 
 type IndexType = u16;
 
@@ -481,6 +482,10 @@ impl<Vertex: Copy + Default> GeometryBatch<Vertex> {
     }
 }
 
+const MODE_THICK_AA: i32 = 0;
+const MODE_THIN_AA: i32 = 1;
+const MODE_NORMAL: i32 = 2;
+
 impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     /// Adds an antialiased outline of a circle positioned at `center` with `radius`, `thickness`
     /// and `color`.
@@ -555,7 +560,9 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 
     // Based on ImDrawList::AddPoyline implementation from Dear ImGui by Omar Cornut 
     // (https://github.com/ocornut/imgui/, MIT license) and Pavel Potoček (https://github.com/potocpav)
-    fn stroke_polyline_internal<const ANTIALIAS: bool>(
+    fn stroke_polyline_internal<
+        const MODE: i32, // MODE_NORMAL, MODE_THIN_AA, MODE_THICK_AA
+    >(
         &mut self,
         points: &[Vec2],
         color: [u8; 4],
@@ -576,296 +583,268 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         let pixel_size = self.pixel_size;
         let col_trans = [color[0], color[1], color[2], 0];
 
-        if ANTIALIAS && thickness <= pixel_size {
-            // Anti-aliased stroke approaximation
-            let idx_count = count * 12;
-            let vtx_count = count * 6;
-            let (vs, is, first_index) = self.allocate(vtx_count, idx_count, Vertex::default());
-            let mut col_faded = color;
-            col_faded[3] = (color[3] as f32 * thickness) as u8;
+        // Precise line with bevels on acute angles
+        let max_n_vtx = match MODE {
+            MODE_THICK_AA => 6,
+            MODE_THIN_AA => 4,
+            MODE_NORMAL => 3,
+            _ => unreachable!()
+        };
+        let max_n_idx = match MODE {
+            MODE_THICK_AA => 3 * 9,
+            MODE_THIN_AA => 3 * 7,
+            MODE_NORMAL => 3 * 3,
+            _ => unreachable!()
+        };
+        let vtx_count = points_count * max_n_vtx;
+        let idx_count = count * max_n_idx;
+        let (mut vs, mut is, first) = self.allocate(vtx_count, idx_count, Vertex::default());
 
-            for i1 in 0..count {
-                let i2 = if (i1 + 1) == points_count { 0 } else { i1 + 1 };
-                let p1 = &points[i1];
-                let p2 = &points[i2];
+        let half_thickness = match MODE {
+            MODE_THICK_AA | MODE_THIN_AA => (thickness - pixel_size) * 0.5,
+            MODE_NORMAL => thickness * 0.5,
+            _ => unreachable!()
+        };
+        let half_thickness_aa = half_thickness + pixel_size;
+        let first_vtx_ptr = first;
+        let mut unused_vertices = 0;
+        let mut unused_indices = 0;
 
-                let mut dx = p2.x - p1.x;
-                let mut dy = p2.y - p1.y;
-                let d_len = (dx * dx + dy * dy).sqrt();
-                if d_len > 0.0 {
-                    let inv = pixel_size / d_len;
-                    dx *= inv;
-                    dy *= inv;
-                }
+        let mut sqlen1 = 0.0;
+        let mut dx1 = 0.0;
+        let mut dy1 = 0.0;
+        if closed {
+            dx1 = points[0].x - points[points_count - 1].x;
+            dy1 = points[0].y - points[points_count - 1].y;
+            sqlen1 = dx1 * dx1 + dy1 * dy1;
 
-                let current_vertex = i1 * 6;
-                vs[current_vertex + 0] = Vertex::from_pos2_color([p1.x + dy, p1.y - dx], col_trans);
-                vs[current_vertex + 1] = Vertex::from_pos2_color([p1.x,           p1.y], col_faded);
-                vs[current_vertex + 2] = Vertex::from_pos2_color([p1.x - dy, p1.y + dx], col_trans);
-                vs[current_vertex + 3] = Vertex::from_pos2_color([p2.x + dy, p2.y - dx], col_trans);
-                vs[current_vertex + 4] = Vertex::from_pos2_color([p2.x,      p2.y     ], col_faded);
-                vs[current_vertex + 5] = Vertex::from_pos2_color([p2.x - dy, p2.y + dx], col_trans);
-
-                let current_vertex = first_index + current_vertex as u16;
-                let current_index = i1 * 12;
-                is[current_index + 0] = current_vertex;
-                is[current_index + 1] = current_vertex + 1;
-                is[current_index + 2] = current_vertex + 4;
-                is[current_index + 3] = current_vertex;
-                is[current_index + 4] = current_vertex + 4;
-                is[current_index + 5] = current_vertex + 3;
-                is[current_index + 6] = current_vertex + 1;
-                is[current_index + 7] = current_vertex + 2;
-                is[current_index + 8] = current_vertex + 5;
-                is[current_index + 9] = current_vertex + 1;
-                is[current_index + 10] = current_vertex + 5;
-                is[current_index + 11] = current_vertex + 4;
+            let d_len = sqlen1.sqrt();
+            if d_len > 0.0 {
+                let inv = 1.0 / d_len;
+                dx1 *= inv;
+                dy1 *= inv;
             }
-        } else {
-            // Precise line with bevels on acute angles
-            let max_n_vtx = if ANTIALIAS { 6 } else { 3 };
-            let max_n_idx = 3 * if ANTIALIAS { 9 } else { 3 };
-            let vtx_count = points_count * max_n_vtx;
-            let idx_count = count * max_n_idx;
-            let (mut vs, mut is, first) = self.allocate(vtx_count, idx_count, Vertex::default());
+        }
 
-            let half_thickness = if ANTIALIAS {
-                thickness - pixel_size
-            } else {
-                thickness
-            } * 0.5;
-            let half_thickness_aa = half_thickness + pixel_size;
-            let first_vtx_ptr = first;
-            let mut unused_vertices = 0;
-            let mut unused_indices = 0;
+        let mut vi = first as usize;
 
-            let mut sqlen1 = 0.0;
-            let mut dx1 = 0.0;
-            let mut dy1 = 0.0;
-            if closed {
-                dx1 = points[0].x - points[points_count - 1].x;
-                dy1 = points[0].y - points[points_count - 1].y;
-                sqlen1 = dx1 * dx1 + dy1 * dy1;
+        for i1 in 0..points_count {
+            let p1 = &points[i1];
+            let i2 = if i1 + 1 == points_count { 0 } else { i1 + 1 };
+            let p2 = &points[i2];
+            let mut dx2 = p1.x - p2.x;
+            let mut dy2 = p1.y - p2.y;
+            let mut sqlen2 = dx2 * dx2 + dy2 * dy2;
 
-                let d_len = sqlen1.sqrt();
-                if d_len > 0.0 {
-                    let inv = 1.0 / d_len;
-                    dx1 *= inv;
-                    dy1 *= inv;
-                }
+            let d_len = sqlen2.sqrt();
+            if d_len > 0.0 {
+                let inv = 1.0 / d_len;
+                dx2 *= inv;
+                dy2 *= inv;
             }
 
-            let mut vi = first as usize;
-
-            for i1 in 0..points_count {
-                let p1 = &points[i1];
-                let i2 = if i1 + 1 == points_count { 0 } else { i1 + 1 };
-                let p2 = &points[i2];
-                let mut dx2 = p1.x - p2.x;
-                let mut dy2 = p1.y - p2.y;
-                let mut sqlen2 = dx2 * dx2 + dy2 * dy2;
-
-                let d_len = sqlen2.sqrt();
-                if d_len > 0.0 {
-                    let inv = 1.0 / d_len;
-                    dx2 *= inv;
-                    dy2 *= inv;
-                }
-
-                if !closed && i1 == 0 {
-                    dx1 = -dx2;
-                    dy1 = -dy2;
-                    sqlen1 = sqlen2;
-                } else if !closed && i1 == points_count - 1 {
-                    dx2 = -dx1;
-                    dy2 = -dy1;
-                    sqlen2 = sqlen1;
-                }
-
-                let miter_l_recip = dx1 * dy2 - dy1 * dx2;
-                let bevel = (dx1 * dx2 + dy1 * dy2) > 1e-5;
-                let ((mlx, mly, mrx, mry), (mlax, mlay, mrax, mray)) = if miter_l_recip.abs() > 1e-3
-                {
-                    let mut miter_l = half_thickness / miter_l_recip;
-                    // Limit (inner) miter so it doesn't shoot away when miter is longer than adjacent line segments on acute angles
-                    let mut min_sqlen = 0.0;
-                    let mut d_sqlen = 0.0;
-                    if bevel {
-                        // This is too aggressive (not exactly precise)
-                        min_sqlen = sqlen1.min(sqlen2);
-                        d_sqlen = (dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2);
-                        let miter_sqlen = d_sqlen * miter_l * miter_l;
-                        if miter_sqlen > min_sqlen {
-                            miter_l *= (min_sqlen / miter_sqlen).sqrt();
-                        }
-                    }
-                    (
-                        (
-                            p1.x - (dx1 + dx2) * miter_l,
-                            p1.y - (dy1 + dy2) * miter_l,
-                            p1.x + (dx1 + dx2) * miter_l,
-                            p1.y + (dy1 + dy2) * miter_l,
-                        ),
-                        if ANTIALIAS {
-                            let mut miter_al = half_thickness_aa / miter_l_recip;
-                            if bevel {
-                                let miter_sqlen = d_sqlen * miter_al * miter_al;
-                                if miter_sqlen > min_sqlen {
-                                    miter_al *= (min_sqlen / miter_sqlen).sqrt();
-                                }
-                            }
-
-                            (
-                                p1.x - (dx1 + dx2) * miter_al,
-                                p1.y - (dy1 + dy2) * miter_al,
-                                p1.x + (dx1 + dx2) * miter_al,
-                                p1.y + (dy1 + dy2) * miter_al,
-                            )
-                        } else {
-                            (0.0, 0.0, 0.0, 0.0)
-                        },
-                    )
-                } else {
-                    // Avoid degeneracy for (nearly) straight lines
-                    (
-                        (
-                            p1.x + dy1 * half_thickness,
-                            p1.y - dx1 * half_thickness,
-                            p1.x - dy1 * half_thickness,
-                            p1.y + dx1 * half_thickness,
-                        ),
-                        if ANTIALIAS {
-                            (
-                                p1.x + dy1 * half_thickness_aa,
-                                p1.y - dx1 * half_thickness_aa,
-                                p1.x - dy1 * half_thickness_aa,
-                                p1.y + dx1 * half_thickness_aa,
-                            )
-                        } else {
-                            (0.0, 0.0, 0.0, 0.0)
-                        },
-                    )
-                };
-                // The two bevel vertices if the angle is right or obtuse
-                // miter_sign == 1, if the outer (maybe bevelled) edge is on the right, -1 iff it is on the left
-                let miter_sign = if miter_l_recip >= 0.0 { 1.0 } else { 0.0 }
-                    - if miter_l_recip < 0.0 { 1.0 } else { 0.0 };
-                let (b1x, b1y, b2x, b2y) = if bevel {
-                    (
-                        p1.x + (dx1 - dy1 * miter_sign) * half_thickness,
-                        p1.y + (dy1 + dx1 * miter_sign) * half_thickness,
-                        p1.x + (dx2 + dy2 * miter_sign) * half_thickness,
-                        p1.y + (dy2 - dx2 * miter_sign) * half_thickness,
-                    )
-                } else {
-                    (0.0, 0.0, 0.0, 0.0)
-                };
-                let (b1ax, b1ay, b2ax, b2ay) = if bevel && ANTIALIAS {
-                    (
-                        p1.x + (dx1 - dy1 * miter_sign) * half_thickness_aa,
-                        p1.y + (dy1 + dx1 * miter_sign) * half_thickness_aa,
-                        p1.x + (dx2 + dy2 * miter_sign) * half_thickness_aa,
-                        p1.y + (dy2 - dx2 * miter_sign) * half_thickness_aa,
-                    )
-                } else {
-                    (0.0, 0.0, 0.0, 0.0)
-                };
-
-                // Set the previous line direction so it doesn't need to be recomputed
+            if !closed && i1 == 0 {
                 dx1 = -dx2;
                 dy1 = -dy2;
                 sqlen1 = sqlen2;
+            } else if !closed && i1 == points_count - 1 {
+                dx2 = -dx1;
+                dy2 = -dy1;
+                sqlen2 = sqlen1;
+            }
 
-                // Now that we have all the point coordinates, put them into buffers
-
-                // Vertices for each point are ordered in vertex buffer like this (looking in the direction of the polyline):
-                // - left vertex*
-                // - right vertex*
-                // - left vertex AA fringe*  (if antialias)
-                // - right vertex AA fringe* (if antialias)
-                // - the remaining vertex (if bevel)
-                // - the remaining vertex AA fringe (if bevel and antialias)
-                // (*) if there is bevel, these vertices are the ones on the incoming edge.
-                // Having all the vertices of the incoming edge in predictable positions is important - we reference them
-                // even if we don't know relevant line properties yet
-
-                let vertex_count = if ANTIALIAS {
-                    if bevel {
-                        6
-                    } else {
-                        4
-                    }
-                } else {
-                    if bevel {
-                        3
-                    } else {
-                        2
-                    }
-                };
-                let bi = if ANTIALIAS { 4 } else { 2 }; // Outgoing edge bevel vertex index
-                let bevel_l = bevel && miter_sign < 0.0;
-                let bevel_r = bevel && miter_sign > 0.0;
-
-                vs[0] = Vertex::from_pos2_color([
-                    if bevel_l { b1x } else { mlx },
-                    if bevel_l { b1y } else { mly },
-                ], color);
-                vs[1] = Vertex::from_pos2_color([
-                    if bevel_r { b1x } else { mrx },
-                    if bevel_r { b1y } else { mry },
-                ], color);
-
+            let miter_l_recip = dx1 * dy2 - dy1 * dx2;
+            let bevel = (dx1 * dx2 + dy1 * dy2) > 1e-5;
+            let ((mlx, mly, mrx, mry), (mlax, mlay, mrax, mray)) = if miter_l_recip.abs() > 1e-3
+            {
+                let mut miter_l = half_thickness / miter_l_recip;
+                // Limit (inner) miter so it doesn't shoot away when miter is longer than adjacent line segments on acute angles
+                let mut min_sqlen = 0.0;
+                let mut d_sqlen = 0.0;
                 if bevel {
-                    vs[bi] = Vertex::from_pos2_color([b2x, b2y], color);
+                    // This is too aggressive (not exactly precise)
+                    min_sqlen = sqlen1.min(sqlen2);
+                    d_sqlen = (dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2);
+                    let miter_sqlen = d_sqlen * miter_l * miter_l;
+                    if miter_sqlen > min_sqlen {
+                        miter_l *= (min_sqlen / miter_sqlen).sqrt();
+                    }
                 }
+                (
+                    (
+                        p1.x - (dx1 + dx2) * miter_l,
+                        p1.y - (dy1 + dy2) * miter_l,
+                        p1.x + (dx1 + dx2) * miter_l,
+                        p1.y + (dy1 + dy2) * miter_l,
+                    ),
+                    if MODE != MODE_NORMAL {
+                        let mut miter_al = half_thickness_aa / miter_l_recip;
+                        if bevel {
+                            let miter_sqlen = d_sqlen * miter_al * miter_al;
+                            if miter_sqlen > min_sqlen {
+                                miter_al *= (min_sqlen / miter_sqlen).sqrt();
+                            }
+                        }
 
-                if ANTIALIAS {
-                    vs[2] = Vertex::from_pos2_color([
-                        if bevel_l { b1ax } else { mlax },
-                        if bevel_l { b1ay } else { mlay },
-                    ], col_trans);
-                    vs[3] = Vertex::from_pos2_color([
-                        if bevel_r { b1ax } else { mrax },
-                        if bevel_r { b1ay } else { mray },
-                    ], col_trans);
+                        (
+                            p1.x - (dx1 + dx2) * miter_al,
+                            p1.y - (dy1 + dy2) * miter_al,
+                            p1.x + (dx1 + dx2) * miter_al,
+                            p1.y + (dy1 + dy2) * miter_al,
+                        )
+                    } else {
+                        (0.0, 0.0, 0.0, 0.0)
+                    },
+                )
+            } else {
+                // Avoid degeneracy for (nearly) straight lines
+                (
+                    (
+                        p1.x + dy1 * half_thickness,
+                        p1.y - dx1 * half_thickness,
+                        p1.x - dy1 * half_thickness,
+                        p1.y + dx1 * half_thickness,
+                    ),
+                    if MODE != MODE_NORMAL {
+                        (
+                            p1.x + dy1 * half_thickness_aa,
+                            p1.y - dx1 * half_thickness_aa,
+                            p1.x - dy1 * half_thickness_aa,
+                            p1.y + dx1 * half_thickness_aa,
+                        )
+                    } else {
+                        (0.0, 0.0, 0.0, 0.0)
+                    },
+                )
+            };
+            // The two bevel vertices if the angle is right or obtuse
+            // miter_sign == 1, if the outer (maybe bevelled) edge is on the right, -1 iff it is on the left
+            let miter_sign = if miter_l_recip >= 0.0 { 1.0 } else { 0.0 }
+                - if miter_l_recip < 0.0 { 1.0 } else { 0.0 };
+            let (b1x, b1y, b2x, b2y) = if bevel {
+                (
+                    p1.x + (dx1 - dy1 * miter_sign) * half_thickness,
+                    p1.y + (dy1 + dx1 * miter_sign) * half_thickness,
+                    p1.x + (dx2 + dy2 * miter_sign) * half_thickness,
+                    p1.y + (dy2 - dx2 * miter_sign) * half_thickness,
+                )
+            } else {
+                (0.0, 0.0, 0.0, 0.0)
+            };
+            let (b1ax, b1ay, b2ax, b2ay) = if bevel && MODE != MODE_NORMAL {
+                (
+                    p1.x + (dx1 - dy1 * miter_sign) * half_thickness_aa,
+                    p1.y + (dy1 + dx1 * miter_sign) * half_thickness_aa,
+                    p1.x + (dx2 + dy2 * miter_sign) * half_thickness_aa,
+                    p1.y + (dy2 - dx2 * miter_sign) * half_thickness_aa,
+                )
+            } else {
+                (0.0, 0.0, 0.0, 0.0)
+            };
+
+            // Set the previous line direction so it doesn't need to be recomputed
+            dx1 = -dx2;
+            dy1 = -dy2;
+            sqlen1 = sqlen2;
+
+            // Now that we have all the point coordinates, put them into buffers
+
+            // Vertices for each point are ordered in vertex buffer like this (looking in the direction of the polyline):
+            // - left vertex*
+            // - right vertex*
+            // - left vertex AA fringe*  (if antialias)
+            // - right vertex AA fringe* (if antialias)
+            // - the remaining vertex (if bevel)
+            // - the remaining vertex AA fringe (if bevel and antialias)
+            // (*) if there is bevel, these vertices are the ones on the incoming edge.
+            // Having all the vertices of the incoming edge in predictable positions is important - we reference them
+            // even if we don't know relevant line properties yet
+
+            let vertex_count = match (MODE, bevel) {
+                (MODE_THICK_AA, true) => 6,
+                (MODE_THICK_AA, false) => 4,
+                (MODE_THIN_AA, true) => 5,
+                (MODE_THIN_AA, false) => 3,
+                (MODE_NORMAL, true) => 3,
+                (MODE_NORMAL, false) => 2,
+                (_, _) => unreachable!()
+            };
+            let bevel_l = bevel && miter_sign < 0.0;
+            let bevel_r = bevel && miter_sign > 0.0;
+
+            // Outgoing edge bevel vertex index
+            let bi = match MODE {
+                MODE_THICK_AA => {
+                    vs[0] = Vertex::from_pos2_color( if bevel_l { [b1x, b1y] } else { [mlx, mly] }, color);
+                    vs[1] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
+                    vs[2] = Vertex::from_pos2_color( if bevel_l { [b1ax, b1ay] } else { [mlax, mlay] }, col_trans);
+                    vs[3] = Vertex::from_pos2_color( if bevel_r { [b1ax, b1ay] } else { [mrax, mray] }, col_trans);
                     if bevel {
+                        vs[4] = Vertex::from_pos2_color([b2x, b2y], color);
                         vs[5] = Vertex::from_pos2_color([b2ax, b2ay], col_trans);
                     }
+                    4
                 }
-                unused_vertices += max_n_vtx - vertex_count;
+                MODE_THIN_AA => {
+                    vs[0] = Vertex::from_pos2_color( if bevel_l { [b1x, b1y] } else { [mlx, mly] }, color);
+                    vs[1] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
+                    // ???
+                    vs[2] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
+                    if bevel {
+                        vs[3] = Vertex::from_pos2_color([b2x, b2y], color);
+                        vs[4] = Vertex::from_pos2_color([b2ax, b2ay], col_trans);
+                    }
+                    3
+                }
+                MODE_NORMAL => {
+                    vs[0] = Vertex::from_pos2_color( if bevel_l { [b1x, b1y] } else { [mlx, mly] }, color);
+                    vs[1] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
+                    if bevel {
+                        vs[2] = Vertex::from_pos2_color([b2x, b2y], color);
+                    }
+                    2
+                },
+                _ => unreachable!(),
+            };
+            unused_vertices += max_n_vtx - vertex_count;
 
-                vs = &mut vs[vertex_count..];
+            vs = &mut vs[vertex_count..];
 
-                if i1 < count {
-                    let vtx_next_id = if i1 < points_count - 1 {
-                        vi + vertex_count
-                    } else {
-                        first_vtx_ptr as usize
-                    };
-                    let l1i = vi + if bevel_l { bi } else { 0 };
-                    let r1i = vi + if bevel_r { bi } else { 1 };
-                    let l2i = vtx_next_id;
-                    let r2i = vtx_next_id + 1;
-                    let ebi = vi + if bevel_l { 0 } else { 1 }; // incoming edge bevel vertex index
+            if i1 < count {
+                let vtx_next_id = if i1 < points_count - 1 {
+                    vi + vertex_count
+                } else {
+                    first_vtx_ptr as usize
+                };
+                let l1i = vi + if bevel_l { bi } else { 0 };
+                let r1i = vi + if bevel_r { bi } else { 1 };
+                let l2i = vtx_next_id;
+                let r2i = vtx_next_id + 1;
+                let ebi = vi + if bevel_l { 0 } else { 1 }; // incoming edge bevel vertex index
 
+                is[0] = l1i as IndexType;
+                is[1] = r1i as IndexType;
+                is[2] = r2i as IndexType;
+                is[3] = l1i as IndexType;
+                is[4] = r2i as IndexType;
+                is[5] = l2i as IndexType;
+                is = &mut is[6..];
+
+                if bevel {
                     is[0] = l1i as IndexType;
                     is[1] = r1i as IndexType;
-                    is[2] = r2i as IndexType;
-                    is[3] = l1i as IndexType;
-                    is[4] = r2i as IndexType;
-                    is[5] = l2i as IndexType;
-                    is = &mut is[6..];
+                    is[2] = ebi as IndexType;
+                    is = &mut is[3..];
+                } else {
+                    unused_indices += 3;
+                }
 
-                    if bevel {
-                        is[0] = l1i as IndexType;
-                        is[1] = r1i as IndexType;
-                        is[2] = ebi as IndexType;
-                        is = &mut is[3..];
-                    } else {
-                        unused_indices += 3;
+                match MODE {
+                    MODE_NORMAL => {}
+                    MODE_THIN_AA => {
+
                     }
-
-                    if ANTIALIAS {
+                    MODE_THICK_AA => {
                         let l1ai = vi + if bevel_l { 5 } else { 2 };
                         let r1ai = vi + if bevel_r { 5 } else { 3 };
                         let l2ai = vtx_next_id + 2;
@@ -898,11 +877,12 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                             unused_indices += 6;
                         }
                     }
+                    _ => unreachable!()
                 }
-                vi += vertex_count;
             }
-            self.reclaim_allocation(unused_vertices, unused_indices);
+            vi += vertex_count;
         }
+        self.reclaim_allocation(unused_vertices, unused_indices);
     }
 
     /// Draws a connected sequence of antialised line segments passing through `points`.
@@ -917,7 +897,11 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         closed: bool,
         thickness: f32,
     ) {
-        self.stroke_polyline_internal::<true>(points, color, closed, thickness)
+        if thickness > self.pixel_size {
+            self.stroke_polyline_internal::<MODE_THICK_AA>(points, color, closed, thickness)
+        } else {
+            self.stroke_polyline_internal::<MODE_THICK_AA>(points, color, closed, thickness)
+        }
     }
 
     /// Draws a connected sequence of line segments passing through `points`.
@@ -932,7 +916,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         closed: bool,
         thickness: f32,
     ) {
-        self.stroke_polyline_internal::<false>(points, color, closed, thickness)
+        self.stroke_polyline_internal::<MODE_NORMAL>(points, color, closed, thickness)
     }
 
     #[doc(hidden)]
