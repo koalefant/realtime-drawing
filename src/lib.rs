@@ -655,67 +655,47 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 
             let miter_l_recip = dx1 * dy2 - dy1 * dx2;
             let bevel = (dx1 * dx2 + dy1 * dy2) > 1e-5;
-            let ((mlx, mly, mrx, mry), (mlax, mlay, mrax, mray)) = if miter_l_recip.abs() > 1e-3
-            {
-                let mut miter_l = half_thickness / miter_l_recip;
-                // Limit (inner) miter so it doesn't shoot away when miter is longer than adjacent line segments on acute angles
-                let mut min_sqlen = 0.0;
-                let mut d_sqlen = 0.0;
-                if bevel {
-                    // This is too aggressive (not exactly precise)
-                    min_sqlen = sqlen1.min(sqlen2);
-                    d_sqlen = (dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2);
-                    let miter_sqlen = d_sqlen * miter_l * miter_l;
-                    if miter_sqlen > min_sqlen {
-                        miter_l *= (min_sqlen / miter_sqlen).sqrt();
-                    }
-                }
-                (
-                    (
-                        p1.x - (dx1 + dx2) * miter_l,
-                        p1.y - (dy1 + dy2) * miter_l,
-                        p1.x + (dx1 + dx2) * miter_l,
-                        p1.y + (dy1 + dy2) * miter_l,
-                    ),
-                    if MODE != MODE_NORMAL {
-                        let mut miter_al = half_thickness_aa / miter_l_recip;
+            let mut d_sqlen = 0.0;
+            let mut min_sqlen = 0.0;
+            let (mlx, mly, mrx, mry) = match MODE {
+                MODE_NORMAL | MODE_THICK_AA => {
+                    if miter_l_recip.abs() > 1e-3 {
+                        let mut miter_l = half_thickness / miter_l_recip;
+                        // Limit (inner) miter so it doesn't shoot away when miter is longer than adjacent line segments on acute angles
                         if bevel {
-                            let miter_sqlen = d_sqlen * miter_al * miter_al;
+                            // This is too aggressive (not exactly precise)
+                            min_sqlen = sqlen1.min(sqlen2);
+                            d_sqlen = (dx1 + dx2) * (dx1 + dx2) + (dy1 + dy2) * (dy1 + dy2);
+                            let miter_sqlen = d_sqlen * miter_l * miter_l;
                             if miter_sqlen > min_sqlen {
-                                miter_al *= (min_sqlen / miter_sqlen).sqrt();
+                                miter_l *= (min_sqlen / miter_sqlen).sqrt();
                             }
                         }
-
                         (
-                            p1.x - (dx1 + dx2) * miter_al,
-                            p1.y - (dy1 + dy2) * miter_al,
-                            p1.x + (dx1 + dx2) * miter_al,
-                            p1.y + (dy1 + dy2) * miter_al,
+                            p1.x - (dx1 + dx2) * miter_l,
+                            p1.y - (dy1 + dy2) * miter_l,
+                            p1.x + (dx1 + dx2) * miter_l,
+                            p1.y + (dy1 + dy2) * miter_l,
                         )
                     } else {
-                        (0.0, 0.0, 0.0, 0.0)
-                    },
-                )
-            } else {
-                // Avoid degeneracy for (nearly) straight lines
-                (
+                        // Avoid degeneracy for (nearly) straight lines
+                        (
+                            p1.x + dy1 * half_thickness,
+                            p1.y - dx1 * half_thickness,
+                            p1.x - dy1 * half_thickness,
+                            p1.y + dx1 * half_thickness,
+                        )
+                    }
+                },
+                MODE_THIN_AA => {
                     (
-                        p1.x + dy1 * half_thickness,
-                        p1.y - dx1 * half_thickness,
-                        p1.x - dy1 * half_thickness,
-                        p1.y + dx1 * half_thickness,
-                    ),
-                    if MODE != MODE_NORMAL {
-                        (
-                            p1.x + dy1 * half_thickness_aa,
-                            p1.y - dx1 * half_thickness_aa,
-                            p1.x - dy1 * half_thickness_aa,
-                            p1.y + dx1 * half_thickness_aa,
-                        )
-                    } else {
-                        (0.0, 0.0, 0.0, 0.0)
-                    },
-                )
+                        p1.x,
+                        p1.y,
+                        0.0,
+                        0.0,
+                    )
+                },
+                _ => unreachable!()
             };
             // The two bevel vertices if the angle is right or obtuse
             // miter_sign == 1, if the outer (maybe bevelled) edge is on the right, -1 iff it is on the left
@@ -731,39 +711,33 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
             } else {
                 (0.0, 0.0, 0.0, 0.0)
             };
-            let (b1ax, b1ay, b2ax, b2ay) = if bevel && MODE != MODE_NORMAL {
-                (
-                    p1.x + (dx1 - dy1 * miter_sign) * half_thickness_aa,
-                    p1.y + (dy1 + dx1 * miter_sign) * half_thickness_aa,
-                    p1.x + (dx2 + dy2 * miter_sign) * half_thickness_aa,
-                    p1.y + (dy2 - dx2 * miter_sign) * half_thickness_aa,
-                )
-            } else {
-                (0.0, 0.0, 0.0, 0.0)
-            };
 
-            // Set the previous line direction so it doesn't need to be recomputed
-            dx1 = -dx2;
-            dy1 = -dy2;
-            sqlen1 = sqlen2;
-
-            // Now that we have all the point coordinates, put them into buffers
-
-            // Vertices for each point are ordered in vertex buffer like this (looking in the direction of the polyline):
+            // Populate vertices, vertex order (looking along the direction of the polyline):
+            //
+            // MODE_THICK_AA:
             // - left vertex*
             // - right vertex*
-            // - left vertex AA fringe*  (if antialias)
-            // - right vertex AA fringe* (if antialias)
+            // - left AA-fringe vertex*
+            // - right AA-fringe vertex*
+            // - extra bevel vertex (if bevel)
+            // - extra bevel AA-fringe vertex (if bevel)
+            // MODE_THIN_AA:
+            // - middle vertex*
+            // - left AA-fringe vertex*
+            // - right AA-fringe vertex*
+            // - extra bevel AA-fringe vertex (if bevel)
+            // MODE_NORMAL:
+            // - left vertex*
+            // - right vertex*
             // - the remaining vertex (if bevel)
-            // - the remaining vertex AA fringe (if bevel and antialias)
-            // (*) if there is bevel, these vertices are the ones on the incoming edge.
-            // Having all the vertices of the incoming edge in predictable positions is important - we reference them
-            // even if we don't know relevant line properties yet
-
+            //
+            // (*) if there is bevel, these vertices are the ones on the incoming edge. Having all
+            // the vertices of the incoming edge in predictable positions is important - we
+            // reference them even if we don't know relevant line properties yet
             let vertex_count = match (MODE, bevel) {
                 (MODE_THICK_AA, true) => 6,
                 (MODE_THICK_AA, false) => 4,
-                (MODE_THIN_AA, true) => 5,
+                (MODE_THIN_AA, true) => 4,
                 (MODE_THIN_AA, false) => 3,
                 (MODE_NORMAL, true) => 3,
                 (MODE_NORMAL, false) => 2,
@@ -775,6 +749,40 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
             // Outgoing edge bevel vertex index
             let bi = match MODE {
                 MODE_THICK_AA => {
+                    let (b1ax, b1ay, b2ax, b2ay) = if bevel {
+                        (
+                            p1.x + (dx1 - dy1 * miter_sign) * half_thickness_aa,
+                            p1.y + (dy1 + dx1 * miter_sign) * half_thickness_aa,
+                            p1.x + (dx2 + dy2 * miter_sign) * half_thickness_aa,
+                            p1.y + (dy2 - dx2 * miter_sign) * half_thickness_aa,
+                        )
+                    } else {
+                        (0.0, 0.0, 0.0, 0.0)
+                    };
+
+                    let mut miter_al = half_thickness_aa / miter_l_recip;
+                    if bevel {
+                        let miter_sqlen = d_sqlen * miter_al * miter_al;
+                        if miter_sqlen > min_sqlen {
+                            miter_al *= (min_sqlen / miter_sqlen).sqrt();
+                        }
+                    }
+
+                    let (mlax, mlay, mrax, mray) = if miter_l_recip.abs() > 1e-3 {
+                        (
+                            p1.x - (dx1 + dx2) * miter_al,
+                            p1.y - (dy1 + dy2) * miter_al,
+                            p1.x + (dx1 + dx2) * miter_al,
+                            p1.y + (dy1 + dy2) * miter_al,
+                        )
+                    } else {
+                        (
+                            p1.x + dy1 * half_thickness_aa,
+                            p1.y - dx1 * half_thickness_aa,
+                            p1.x - dy1 * half_thickness_aa,
+                            p1.y + dx1 * half_thickness_aa,
+                        )
+                    };
                     vs[0] = Vertex::from_pos2_color( if bevel_l { [b1x, b1y] } else { [mlx, mly] }, color);
                     vs[1] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
                     vs[2] = Vertex::from_pos2_color( if bevel_l { [b1ax, b1ay] } else { [mlax, mlay] }, col_trans);
@@ -786,13 +794,46 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
                     4
                 }
                 MODE_THIN_AA => {
-                    vs[0] = Vertex::from_pos2_color( if bevel_l { [b1x, b1y] } else { [mlx, mly] }, color);
-                    vs[1] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
-                    // ???
-                    vs[2] = Vertex::from_pos2_color( if bevel_r { [b1x, b1y] } else { [mrx, mry] }, color);
+                    let (b1ax, b1ay, b2ax, b2ay) = if bevel {
+                        (
+                            p1.x + (dx1 - dy1 * miter_sign) * half_thickness_aa,
+                            p1.y + (dy1 + dx1 * miter_sign) * half_thickness_aa,
+                            p1.x + (dx2 + dy2 * miter_sign) * half_thickness_aa,
+                            p1.y + (dy2 - dx2 * miter_sign) * half_thickness_aa,
+                        )
+                    } else {
+                        (0.0, 0.0, 0.0, 0.0)
+                    };
+
+                    let mut miter_al = half_thickness_aa / miter_l_recip;
                     if bevel {
-                        vs[3] = Vertex::from_pos2_color([b2x, b2y], color);
-                        vs[4] = Vertex::from_pos2_color([b2ax, b2ay], col_trans);
+                        let miter_sqlen = d_sqlen * miter_al * miter_al;
+                        if miter_sqlen > min_sqlen {
+                            miter_al *= (min_sqlen / miter_sqlen).sqrt();
+                        }
+                    }
+
+                    let (mlax, mlay, mrax, mray) = if miter_l_recip.abs() > 1e-3 {
+                        (
+                            p1.x - (dx1 + dx2) * miter_al,
+                            p1.y - (dy1 + dy2) * miter_al,
+                            p1.x + (dx1 + dx2) * miter_al,
+                            p1.y + (dy1 + dy2) * miter_al,
+                        )
+                    } else {
+                        (
+                            p1.x + dy1 * half_thickness_aa,
+                            p1.y - dx1 * half_thickness_aa,
+                            p1.x - dy1 * half_thickness_aa,
+                            p1.y + dx1 * half_thickness_aa,
+                        )
+                    };
+
+                    vs[0] = Vertex::from_pos2_color( [mlx, mly], color);
+                    vs[1] = Vertex::from_pos2_color( if bevel_l { [b1ax, b1ay] } else { [mlax, mlay] }, col_trans);
+                    vs[2] = Vertex::from_pos2_color( if bevel_r { [b1ax, b1ay] } else { [mrax, mray] }, col_trans);
+                    if bevel {
+                        vs[3] = Vertex::from_pos2_color([b2ax, b2ay], col_trans);
                     }
                     3
                 }
@@ -810,41 +851,104 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 
             vs = &mut vs[vertex_count..];
 
+            // Set the previous line direction so it doesn't need to be recomputed
+            dx1 = -dx2;
+            dy1 = -dy2;
+            sqlen1 = sqlen2;
+
             if i1 < count {
                 let vtx_next_id = if i1 < points_count - 1 {
                     vi + vertex_count
                 } else {
                     first_vtx_ptr as usize
                 };
-                let l1i = vi + if bevel_l { bi } else { 0 };
-                let r1i = vi + if bevel_r { bi } else { 1 };
-                let l2i = vtx_next_id;
-                let r2i = vtx_next_id + 1;
-                let ebi = vi + if bevel_l { 0 } else { 1 }; // incoming edge bevel vertex index
-
-                is[0] = l1i as IndexType;
-                is[1] = r1i as IndexType;
-                is[2] = r2i as IndexType;
-                is[3] = l1i as IndexType;
-                is[4] = r2i as IndexType;
-                is[5] = l2i as IndexType;
-                is = &mut is[6..];
-
-                if bevel {
-                    is[0] = l1i as IndexType;
-                    is[1] = r1i as IndexType;
-                    is[2] = ebi as IndexType;
-                    is = &mut is[3..];
-                } else {
-                    unused_indices += 3;
-                }
 
                 match MODE {
-                    MODE_NORMAL => {}
+                    MODE_NORMAL => {
+                        let l1i = vi + if bevel_l { bi } else { 0 };
+                        let r1i = vi + if bevel_r { bi } else { 1 };
+                        let l2i = vtx_next_id;
+                        let r2i = vtx_next_id + 1;
+                        let ebi = vi + if bevel_l { 0 } else { 1 }; // incoming edge bevel vertex index
+
+                        is[0] = l1i as IndexType;
+                        is[1] = r1i as IndexType;
+                        is[2] = r2i as IndexType;
+                        is[3] = l1i as IndexType;
+                        is[4] = r2i as IndexType;
+                        is[5] = l2i as IndexType;
+                        is = &mut is[6..];
+
+                        if bevel {
+                            is[0] = l1i as IndexType;
+                            is[1] = r1i as IndexType;
+                            is[2] = ebi as IndexType;
+                            is = &mut is[3..];
+                        } else {
+                            unused_indices += 3;
+                        }
+                    }
                     MODE_THIN_AA => {
+                        let m1i = vi + if bevel_l { bi } else { 0 };
+                        let m2i = vtx_next_id;
+
+                        let l1ai = vi + if bevel_l { 3 } else { 1 };
+                        let r1ai = vi + if bevel_r { 3 } else { 2 };
+                        let l2ai = vtx_next_id + 1;
+                        let r2ai = vtx_next_id + 2;
+
+                        is[0] = l1ai as IndexType;
+                        is[1] = m1i as IndexType;
+                        is[2] = m2i as IndexType;
+
+                        is[3] = l1ai as IndexType;
+                        is[4] = m2i as IndexType;
+                        is[5] = l2ai as IndexType;
+
+                        is[6] = r1ai as IndexType;
+                        is[7] = m1i as IndexType;
+                        is[8] = m2i as IndexType;
+
+                        is[9] = r1ai as IndexType;
+                        is[10] = m2i as IndexType;
+                        is[11] = r2ai as IndexType;
+
+                        is = &mut is[12..];
+
+                        if bevel {
+                            is[0] = vi as u16 + if bevel_r { 0 } else { 1 };
+                            is[1] = vi as u16 + if bevel_r { 2 } else { 0 };
+                            is[2] = vi as u16 + if bevel_r { 3 } else { 3 };
+                            is = &mut is[3..];
+                        } else {
+                            unused_indices += 3;
+                        }
 
                     }
                     MODE_THICK_AA => {
+                        let l1i = vi + if bevel_l { bi } else { 0 };
+                        let r1i = vi + if bevel_r { bi } else { 1 };
+                        let l2i = vtx_next_id;
+                        let r2i = vtx_next_id + 1;
+                        let ebi = vi + if bevel_l { 0 } else { 1 }; // incoming edge bevel vertex index
+
+                        is[0] = l1i as IndexType;
+                        is[1] = r1i as IndexType;
+                        is[2] = r2i as IndexType;
+                        is[3] = l1i as IndexType;
+                        is[4] = r2i as IndexType;
+                        is[5] = l2i as IndexType;
+                        is = &mut is[6..];
+
+                        if bevel {
+                            is[0] = l1i as IndexType;
+                            is[1] = r1i as IndexType;
+                            is[2] = ebi as IndexType;
+                            is = &mut is[3..];
+                        } else {
+                            unused_indices += 3;
+                        }
+
                         let l1ai = vi + if bevel_l { 5 } else { 2 };
                         let r1ai = vi + if bevel_r { 5 } else { 3 };
                         let l2ai = vtx_next_id + 2;
@@ -900,7 +1004,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         if thickness > self.pixel_size {
             self.stroke_polyline_internal::<MODE_THICK_AA>(points, color, closed, thickness)
         } else {
-            self.stroke_polyline_internal::<MODE_THICK_AA>(points, color, closed, thickness)
+            self.stroke_polyline_internal::<MODE_THIN_AA>(points, color, closed, thickness)
         }
     }
 
