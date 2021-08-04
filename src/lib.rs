@@ -539,10 +539,10 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         &mut self,
         start: Vec2,
         end: Vec2,
-        color: [u8; 4],
         thickness: f32,
+        color: [u8; 4]
     ) {
-        self.stroke_polyline_aa(&[start, end], color, false, thickness);
+        self.stroke_polyline_aa(&[start, end], false, thickness, color);
     }
     
     /// Draws a line from `start` to `finish` of `thickness` and `color`.
@@ -552,10 +552,10 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         &mut self,
         start: Vec2,
         end: Vec2,
-        color: [u8; 4],
         thickness: f32,
+        color: [u8; 4]
     ) {
-        self.stroke_polyline(&[start, end], color, false, thickness);
+        self.stroke_polyline(&[start, end], false, thickness, color);
     }
 
     // Based on ImDrawList::AddPoyline implementation from Dear ImGui by Omar Cornut 
@@ -565,9 +565,9 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     >(
         &mut self,
         points: &[Vec2],
-        color: [u8; 4],
         closed: bool,
         thickness: f32,
+        color: [u8; 4],
     ) {
         let points_count = points.len();
         if points_count < 2 {
@@ -998,14 +998,14 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     pub fn stroke_polyline_aa(
         &mut self,
         points: &[Vec2],
-        color: [u8; 4],
         closed: bool,
         thickness: f32,
+        color: [u8; 4],
     ) {
         if thickness > self.pixel_size {
-            self.stroke_polyline_internal::<MODE_THICK_AA>(points, color, closed, thickness)
+            self.stroke_polyline_internal::<MODE_THICK_AA>(points, closed, thickness, color)
         } else {
-            self.stroke_polyline_internal::<MODE_THIN_AA>(points, color, closed, thickness)
+            self.stroke_polyline_internal::<MODE_THIN_AA>(points, closed, thickness, color)
         }
     }
 
@@ -1017,11 +1017,11 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
     pub fn stroke_polyline(
         &mut self,
         points: &[Vec2],
-        color: [u8; 4],
         closed: bool,
         thickness: f32,
+        color: [u8; 4],
     ) {
-        self.stroke_polyline_internal::<MODE_NORMAL>(points, color, closed, thickness)
+        self.stroke_polyline_internal::<MODE_NORMAL>(points, closed, thickness, color)
     }
 
     #[doc(hidden)]
@@ -1269,13 +1269,13 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
 
     pub fn add_position_indices(
         &mut self,
-        positions: &[[f32; 2]],
+        positions: &[Vec2],
         indices: &[IndexType],
         color: [u8; 4],
     ) {
         let (vs, is, first) = self.allocate(positions.len(), indices.len(), Vertex::default());
         for (dest, pos) in vs.iter_mut().zip(positions) {
-            *dest = Vertex::from_pos2_color(*pos, color);
+            *dest = Vertex::from_pos2_color([pos.x, pos.y], color);
         }
         for (dest, index) in is.iter_mut().zip(indices) {
             *dest = index + first;
@@ -1358,7 +1358,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         temp_path.clear();
 
         path::add_rounded_rect(&mut temp_path, start, end, corner_radius, corner_points);
-        self.stroke_polyline_aa(&temp_path, color, true, thickness);
+        self.stroke_polyline_aa(&temp_path, true, thickness, color);
 
         self.temp_path = temp_path;
     }
@@ -1369,7 +1369,7 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         temp_path.clear();
 
         path::add_rounded_rect(&mut temp_path, start, end, corner_radius, corner_points);
-        self.stroke_polyline(&temp_path, color, true, thickness);
+        self.stroke_polyline(&temp_path, true, thickness, color);
 
         self.temp_path = temp_path;
     }
@@ -1464,8 +1464,8 @@ impl<Vertex: Default + Copy + FromPos2ColorUV> GeometryBatch<Vertex> {
         center: [f32; 2],
         extents: [f32; 2],
         divisions: [IndexType; 2],
+        uv_rect: [f32; 4],
         color: [u8; 4],
-        uv_rect: [f32; 4]
     ) {
         let num_points = (divisions[0] * divisions[1]) as usize;
         let (vs, is, first) = self.allocate(num_points, 6 * num_points, Vertex::default());

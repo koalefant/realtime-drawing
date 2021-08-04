@@ -86,15 +86,15 @@ impl EventHandler for Example {
                 self.batch.geometry.stroke_line_aa(
                     offset + vec2(-50.0, 10.0),
                     offset + vec2(50.0, -10.0),
-                    [255, 255, 255, 255],
-                    thickness);
+                    thickness,
+                    [255, 255, 255, 255]);
 
                 let offset = vec2(w * 0.3, h * 0.5 + (i as f32 - 5.0) * 15.0).floor();
                 self.batch.geometry.stroke_line(
                     offset + vec2(-50.0, 10.0),
                     offset + vec2(50.0, -10.0),
-                    [255, 255, 255, 255],
-                    thickness);
+                    thickness,
+                    [255, 255, 255, 255]);
             }
         }
 
@@ -163,9 +163,9 @@ impl EventHandler for Example {
                     .iter()
                     .map(|p| *p * 2.0 + offset)
                     .collect::<Vec<_>>(),
-                    [255, 255, 255, 255],
                     true,
-                    thickness);
+                    thickness,
+                    [255, 255, 255, 255]);
 
                 let offset = vec2(w * 0.75 + (i as f32 - 0.5) * 112.0, h * 0.5 - 48.0).floor() + Vec2::splat((thickness * 0.5f32).fract());
                 self.batch.geometry.stroke_polyline(
@@ -173,9 +173,9 @@ impl EventHandler for Example {
                     .iter()
                     .map(|p| *p * 2.0 + offset)
                     .collect::<Vec<_>>(),
-                    [255, 255, 255, 255],
                     true,
-                    thickness);
+                    thickness,
+                    [255, 255, 255, 255]);
             }
         }
 

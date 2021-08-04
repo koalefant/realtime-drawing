@@ -459,9 +459,9 @@ impl Rabbit {
             &[4.5, 4.5],
             vmask,
         );
-        geometry.stroke_polyline_aa(&ellipse, [0, 255, 0, 255], true, 1.0);
-        geometry.stroke_polyline_aa(&ellipse2, [89, 89, 89, 255], true, 1.0);
-        geometry.stroke_polyline_aa(&ellipse3, [64, 64, 64, 255], true, 1.0);
+        geometry.stroke_polyline_aa(&ellipse, true, 1.0, [0, 255, 0, 255]);
+        geometry.stroke_polyline_aa(&ellipse2, true, 1.0, [89, 89, 89, 255]);
+        geometry.stroke_polyline_aa(&ellipse3, true, 1.0, [64, 64, 64, 255]);
         geometry.fill_circle_aa(shoulder, 4.5, 16, def);
         geometry.stroke_capsule_chain_aa(
             &[
@@ -499,24 +499,24 @@ impl Rabbit {
             geometry.fill_circle_aa(back_contact, 4.5, 16, [0, 0, 200, alpha]);
             geometry.stroke_polyline_aa(
                 &[body_front, body_front + -normal.perp() * dir_sign * 10.0],
-                [255, 0, 0, alpha],
                 false,
                 2.0,
+                [255, 0, 0, alpha],
             );
             geometry.stroke_polyline_aa(
                 &[body_front, body_front + body_dir * 10.0],
-                [0, 200, 0, alpha],
                 false,
                 2.0,
+                [0, 200, 0, alpha],
             );
             geometry.stroke_polyline_aa(
                 &[
                     body_front,
                     body_front + self.velocity * DEBUG_VELOCITY_DRAW_SCALE,
                 ],
-                [255, 0, 255, alpha],
                 false,
                 2.0,
+                [255, 0, 255, alpha],
             );
         }
     }
