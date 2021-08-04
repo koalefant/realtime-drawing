@@ -1196,6 +1196,63 @@ impl<Vertex: Copy + Default + FromPos2Color> GeometryBatch<Vertex> {
         self.temp_normals = temp_normals;
     }
 
+    /// Fills a visibility-polygon.
+    ///
+    /// Visibility polygon is a star-shaped polygon. It does not need to be convex but all
+    /// vertices should be directly "visible" from the `center` point.
+    pub fn fill_visibility_polygon_aa(&mut self, points: &[Vec2], center: Vec2, color: [u8; 4]) {
+        let mut temp_normals = take(&mut self.temp_normals);
+        let half_pixel_size = self.pixel_size * 0.5;
+        let color_trans = [color[0], color[1], color[2], 0];
+
+        let num_vertices = 1 + points.len() * 2;
+        let num_indices = points.len() * 3 + points.len() * 6;
+        let (vs, is, first) = self.allocate(num_vertices, num_indices, Vertex::default());
+
+        // indices for inner fill
+        let center_index = first + 2 * points.len() as IndexType;
+        let num_points2 = points.len() as IndexType * 2;
+        for i in 0..points.len() {
+            is[i * 3 + 0] = center_index;
+            is[i * 3 + 1] = first + ((i as IndexType + 0) * 2);
+            is[i * 3 + 2] = first + ((i as IndexType + 1) * 2) % num_points2;
+        }
+
+        // calculate normals
+        temp_normals.clear();
+        temp_normals.reserve(points.len());
+        for i in 0..points.len() {
+            let p0 = points[i];
+            let p1 = points[(i + 1) % points.len()];
+            let delta = p1 - p0;
+            temp_normals.push(-delta.perp().try_normalize().unwrap_or(vec2(0.0, 0.0)));
+        }
+
+        let fringe_base = points.len() * 3;
+        for i in 0..points.len() {
+            let ip = (i + points.len() - 1) % points.len();
+            let n0 = temp_normals[ip];
+            let n1 = temp_normals[i];
+            let hn = (n0 + n1).try_normalize().unwrap_or(vec2(0.0, 0.0)) * half_pixel_size;
+
+            // inner vertex followed by outer vertex
+            vs[i * 2 + 0] = Vertex::from_pos2_color([points[i].x - hn.x, points[i].y - hn.y], color);
+            vs[i * 2 + 1] = Vertex::from_pos2_color([points[i].x + hn.x, points[i].y + hn.y], color_trans);
+
+            // indices for surrounding blended faceloop
+            let base = fringe_base + i * 6;
+            is[base + 0] = first + 0 + 2 * i  as IndexType;
+            is[base + 1] = first + 0 + 2 * ip as IndexType;
+            is[base + 2] = first + 1 + 2 * ip as IndexType;
+            is[base + 3] = first + 1 + 2 * ip as IndexType;
+            is[base + 4] = first + 1 + 2 * i  as IndexType;
+            is[base + 5] = first + 0 + 2 * i  as IndexType;
+        }
+        vs[points.len() * 2] = Vertex::from_pos2_color([center.x, center.y], color);
+
+        self.temp_normals = temp_normals;
+    }
+
     pub fn fill_convex_polygon(&mut self, points: &[Vec2], color: [u8; 4]) {
         let num_vertices = points.len();
         let num_indices = (points.len() - 2) * 3;
